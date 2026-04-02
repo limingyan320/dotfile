@@ -1,0 +1,6 @@
+# 敏感信息不进 git
+.secrets
+*.backup.*
+
+# OS
+.DS_Store

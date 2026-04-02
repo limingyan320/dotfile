@@ -1,0 +1,22 @@
+# ============================================
+# .shared_rc — 跨平台通用配置
+# macOS (.zshrc) 和 Linux (.bashrc) 都会 source 这个文件
+# ============================================
+
+# --- 环境变量 ---
+export LANG=en_US.UTF-8
+export EDITOR=nvim
+
+# --- PATH ---
+# 在这里添加跨平台通用的 PATH
+# export PATH="$HOME/.local/bin:$PATH"
+
+# --- 通用别名 ---
+alias vim='nvim'
+alias ll='ls -la'
+alias la='ls -a'
+alias ..='cd ..'
+alias ...='cd ../..'
+
+# --- 加载机器本地的秘密配置（API key 等，不进 git）---
+[ -f "$HOME/.secrets" ] && source "$HOME/.secrets"
