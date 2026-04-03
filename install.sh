@@ -18,6 +18,86 @@ info()  { echo -e "${GREEN}[OK]${NC} $1"; }
 warn()  { echo -e "${YELLOW}[SKIP]${NC} $1"; }
 error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
+# ============================================
+# 第一步：检测平台
+# ============================================
+OS="$(uname -s)"
+case "$OS" in
+    Darwin) PLATFORM="macos" ;;
+    Linux)  PLATFORM="linux" ;;
+    *)      error "不支持的系统: $OS"; exit 1 ;;
+esac
+
+echo "=============================="
+echo " Dotfiles 安装"
+echo "=============================="
+echo ""
+echo "检测到平台: $PLATFORM"
+echo ""
+
+# ============================================
+# 第二步：安装包管理器和软件
+# ============================================
+echo "--- 安装软件 ---"
+echo ""
+
+if [ "$PLATFORM" = "macos" ]; then
+    # macOS: 安装 Homebrew（如果没有）
+    if ! command -v brew &>/dev/null; then
+        info "正在安装 Homebrew..."
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    else
+        warn "Homebrew 已安装，跳过"
+    fi
+
+    # macOS: 安装软件
+    for pkg in neovim tmux git; do
+        if brew list "$pkg" &>/dev/null; then
+            warn "$pkg 已安装，跳过"
+        else
+            info "正在安装 $pkg..."
+            brew install "$pkg"
+        fi
+    done
+
+    # macOS: 安装 zsh 插件
+    mkdir -p "$HOME/.zsh"
+    if [ ! -d "$HOME/.zsh/zsh-autosuggestions" ]; then
+        info "正在安装 zsh-autosuggestions..."
+        git clone https://github.com/zsh-users/zsh-autosuggestions "$HOME/.zsh/zsh-autosuggestions"
+    else
+        warn "zsh-autosuggestions 已安装，跳过"
+    fi
+    if [ ! -d "$HOME/.zsh/zsh-syntax-highlighting" ]; then
+        info "正在安装 zsh-syntax-highlighting..."
+        git clone https://github.com/zsh-users/zsh-syntax-highlighting "$HOME/.zsh/zsh-syntax-highlighting"
+    else
+        warn "zsh-syntax-highlighting 已安装，跳过"
+    fi
+
+elif [ "$PLATFORM" = "linux" ]; then
+    # Linux/WSL: apt 安装
+    info "正在更新软件包列表..."
+    sudo apt update
+
+    for pkg in neovim tmux git xclip bash-completion; do
+        if dpkg -s "$pkg" &>/dev/null; then
+            warn "$pkg 已安装，跳过"
+        else
+            info "正在安装 $pkg..."
+            sudo apt install -y "$pkg"
+        fi
+    done
+fi
+
+echo ""
+
+# ============================================
+# 第三步：创建符号链接
+# ============================================
+echo "--- 创建符号链接 ---"
+echo ""
+
 # 创建符号链接，已存在则备份
 link_file() {
     local src="$1"
@@ -47,22 +127,6 @@ link_file() {
     ln -s "$src" "$dst"
     info "$dst → $src"
 }
-
-echo "=============================="
-echo " Dotfiles 安装"
-echo "=============================="
-echo ""
-
-# 检测平台
-OS="$(uname -s)"
-case "$OS" in
-    Darwin) PLATFORM="macos" ;;
-    Linux)  PLATFORM="linux" ;;
-    *)      error "不支持的系统: $OS"; exit 1 ;;
-esac
-
-echo "检测到平台: $PLATFORM"
-echo ""
 
 # --- 通用链接 ---
 link_file "$DOTFILES/shell/.shared_rc"          "$HOME/.shared_rc"
