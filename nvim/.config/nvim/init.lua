@@ -49,6 +49,61 @@ require("lazy").setup({
       },
     },
   },
+  -- 文件搜索（Ctrl+P 搜文件，<leader>fg 全局搜内容）
+  {
+    "nvim-telescope/telescope.nvim",
+    dependencies = { "nvim-lua/plenary.nvim" },
+    config = function()
+      local actions = require("telescope.actions")
+      local action_state = require("telescope.actions.state")
+
+      -- Ctrl+H 在 telescope 内切换隐藏文件显示
+      local show_hidden = false
+      local toggle_hidden = function(prompt_bufnr)
+        show_hidden = not show_hidden
+        local picker = action_state.get_current_picker(prompt_bufnr)
+        local query = picker:_get_prompt()
+        actions.close(prompt_bufnr)
+        require("telescope.builtin").find_files({ hidden = show_hidden, default_text = query })
+      end
+
+      require("telescope").setup({
+        defaults = {
+          mappings = {
+            i = { ["<C-h>"] = toggle_hidden },
+          },
+        },
+      })
+    end,
+    keys = {
+      { "<C-p>", function() require("telescope.builtin").find_files() end, desc = "Find files" },
+      { "<leader>fg", function() require("telescope.builtin").live_grep() end, desc = "Live grep" },
+      { "<leader>fb", function() require("telescope.builtin").buffers() end, desc = "Buffers" },
+    },
+  },
+  -- Git 侧边栏标记（增删改彩色竖条）
+  {
+    "lewis6991/gitsigns.nvim",
+    event = { "BufReadPre", "BufNewFile" },
+    opts = {},
+  },
+  -- Git diff 可视化（:DiffviewOpen 打开 side-by-side diff）
+  {
+    "sindrets/diffview.nvim",
+    cmd = { "DiffviewOpen", "DiffviewFileHistory" },
+    keys = {
+      { "<leader>gd", "<cmd>DiffviewOpen<cr>", desc = "Git diff" },
+      { "<leader>gh", "<cmd>DiffviewFileHistory %<cr>", desc = "File history" },
+      { "<leader>gq", "<cmd>DiffviewClose<cr>", desc = "Close diff" },
+    },
+    opts = {},
+  },
+  -- 光标残影动画
+  {
+    "sphamba/smear-cursor.nvim",
+    event = "VeryLazy",
+    opts = {},
+  },
   -- LSP 配置
   {
     "williamboman/mason.nvim",
@@ -59,37 +114,28 @@ require("lazy").setup({
     dependencies = { "williamboman/mason.nvim", "neovim/nvim-lspconfig" },
     opts = {
       ensure_installed = {
-        "lua_ls", "pyright", "ts_ls", "gopls", "rust_analyzer",
+        "lua_ls", "pyright", "ts_ls",
       },
       automatic_installation = true,
     },
-    config = function(_, opts)
-      require("mason-lspconfig").setup(opts)
-
-      local capabilities = require("blink.cmp").get_lsp_capabilities()
-      local lspconfig = require("lspconfig")
-
-      require("mason-lspconfig").setup_handlers({
-        function(server_name)
-          lspconfig[server_name].setup({ capabilities = capabilities })
-        end,
-        ["lua_ls"] = function()
-          lspconfig.lua_ls.setup({
-            capabilities = capabilities,
-            settings = {
-              Lua = {
-                workspace = { checkThirdParty = false },
-                telemetry = { enable = false },
-              },
-            },
-          })
-        end,
-      })
-    end,
   },
   {
     "neovim/nvim-lspconfig",
     event = { "BufReadPre", "BufNewFile" },
+    dependencies = { "saghen/blink.cmp" },
+    config = function()
+      vim.lsp.config("*", {
+        capabilities = require("blink.cmp").get_lsp_capabilities(),
+      })
+      vim.lsp.config("lua_ls", {
+        settings = {
+          Lua = {
+            workspace = { checkThirdParty = false },
+            telemetry = { enable = false },
+          },
+        },
+      })
+    end,
     keys = {
       { "gd", vim.lsp.buf.definition, desc = "Go to definition" },
       { "gr", vim.lsp.buf.references, desc = "References" },

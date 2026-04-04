@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # ============================================
 # install.sh — 一键安装 dotfiles（创建符号链接）
-# 用法: bash ~/.dotfiles/install.sh
+# 用法: bash ~/.dotfile/install.sh
 # ============================================
 
 set -e
 
-DOTFILES="$HOME/.dotfiles"
+# 自动检测脚本所在目录（不硬编码路径）
+DOTFILES="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # 颜色
 GREEN='\033[0;32m'
@@ -33,34 +34,84 @@ echo " Dotfiles 安装"
 echo "=============================="
 echo ""
 echo "检测到平台: $PLATFORM"
-echo ""
 
 # ============================================
-# 第二步：安装包管理器和软件
+# 第二步：检测包管理器并安装软件
 # ============================================
+detect_pkg_manager() {
+    if command -v brew &>/dev/null; then echo "brew"
+    elif [ -f /run/ostree-booted ]; then echo "rpm-ostree"
+    elif command -v dnf &>/dev/null; then echo "dnf"
+    elif command -v apt &>/dev/null; then echo "apt"
+    else echo "none"
+    fi
+}
+
+PKG_MANAGER="$(detect_pkg_manager)"
+echo "检测到包管理器: $PKG_MANAGER"
+echo ""
 echo "--- 安装软件 ---"
 echo ""
 
-if [ "$PLATFORM" = "macos" ]; then
-    # macOS: 安装 Homebrew（如果没有）
-    if ! command -v brew &>/dev/null; then
-        info "正在安装 Homebrew..."
-        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    else
-        warn "Homebrew 已安装，跳过"
-    fi
-
-    # macOS: 安装软件
-    for pkg in neovim tmux git; do
-        if brew list "$pkg" &>/dev/null; then
-            warn "$pkg 已安装，跳过"
-        else
-            info "正在安装 $pkg..."
-            brew install "$pkg"
+case "$PKG_MANAGER" in
+    brew)
+        for pkg in neovim tmux git; do
+            if brew list "$pkg" &>/dev/null; then
+                warn "$pkg 已安装，跳过"
+            else
+                info "正在安装 $pkg..."
+                brew install "$pkg"
+            fi
+        done
+        ;;
+    rpm-ostree)
+        NEED_INSTALL=()
+        for pkg in neovim tmux git wl-clipboard bash-completion; do
+            if rpm -q "$pkg" &>/dev/null; then
+                warn "$pkg 已安装，跳过"
+            else
+                NEED_INSTALL+=("$pkg")
+            fi
+        done
+        if [ ${#NEED_INSTALL[@]} -gt 0 ]; then
+            info "正在通过 rpm-ostree 安装: ${NEED_INSTALL[*]}..."
+            sudo rpm-ostree install --idempotent "${NEED_INSTALL[@]}"
+            if ! sudo rpm-ostree apply-live 2>/dev/null; then
+                warn "apply-live 失败，需要重启后生效: sudo systemctl reboot"
+            fi
         fi
-    done
+        ;;
+    dnf)
+        for pkg in neovim tmux git wl-clipboard bash-completion; do
+            if rpm -q "$pkg" &>/dev/null; then
+                warn "$pkg 已安装，跳过"
+            else
+                info "正在安装 $pkg..."
+                sudo dnf install -y "$pkg"
+            fi
+        done
+        ;;
+    apt)
+        info "正在更新软件包列表..."
+        sudo apt update
+        for pkg in neovim tmux git xclip bash-completion; do
+            if dpkg -s "$pkg" &>/dev/null; then
+                warn "$pkg 已安装，跳过"
+            else
+                info "正在安装 $pkg..."
+                sudo apt install -y "$pkg"
+            fi
+        done
+        ;;
+    none)
+        error "没有找到包管理器 (brew/rpm-ostree/dnf/apt)"
+        error "请手动安装: neovim tmux git"
+        error "安装后重新运行此脚本以创建符号链接"
+        ;;
+esac
 
-    # macOS: 安装 zsh 插件
+# macOS: 安装 zsh 插件
+if [ "$PLATFORM" = "macos" ]; then
     mkdir -p "$HOME/.zsh"
     if [ ! -d "$HOME/.zsh/zsh-autosuggestions" ]; then
         info "正在安装 zsh-autosuggestions..."
@@ -74,20 +125,6 @@ if [ "$PLATFORM" = "macos" ]; then
     else
         warn "zsh-syntax-highlighting 已安装，跳过"
     fi
-
-elif [ "$PLATFORM" = "linux" ]; then
-    # Linux/WSL: apt 安装
-    info "正在更新软件包列表..."
-    sudo apt update
-
-    for pkg in neovim tmux git xclip bash-completion; do
-        if dpkg -s "$pkg" &>/dev/null; then
-            warn "$pkg 已安装，跳过"
-        else
-            info "正在安装 $pkg..."
-            sudo apt install -y "$pkg"
-        fi
-    done
 fi
 
 echo ""
