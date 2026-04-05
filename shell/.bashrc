@@ -22,3 +22,4 @@ parse_git_branch() {
     git branch 2>/dev/null | sed -n 's/* \(.*\)/ (\1)/p'
 }
 PS1='\[\e[36m\]\w\[\e[31m\]$(parse_git_branch)\[\e[0m\] $ '
+

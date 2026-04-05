@@ -130,7 +130,39 @@ fi
 echo ""
 
 # ============================================
-# 第三步：创建符号链接
+# 第三步：安装 Nerd Font（用户目录，无需 sudo）
+# ============================================
+echo "--- 安装字体 ---"
+echo ""
+
+FONT_NAME="JetBrainsMono"
+if [ "$PLATFORM" = "macos" ]; then
+    FONT_DIR="$HOME/Library/Fonts"
+else
+    FONT_DIR="$HOME/.local/share/fonts"
+fi
+
+if ls "$FONT_DIR"/${FONT_NAME}*.ttf &>/dev/null; then
+    warn "$FONT_NAME Nerd Font 已安装，跳过"
+else
+    info "正在安装 $FONT_NAME Nerd Font..."
+    FONT_URL="https://github.com/ryanoasis/nerd-fonts/releases/latest/download/${FONT_NAME}.tar.xz"
+    TMP_DIR="$(mktemp -d)"
+    curl -fsSL "$FONT_URL" -o "$TMP_DIR/${FONT_NAME}.tar.xz"
+    mkdir -p "$FONT_DIR"
+    tar -xf "$TMP_DIR/${FONT_NAME}.tar.xz" -C "$FONT_DIR" --wildcards '*.ttf'
+    rm -rf "$TMP_DIR"
+    # Linux 刷新字体缓存
+    if [ "$PLATFORM" = "linux" ] && command -v fc-cache &>/dev/null; then
+        fc-cache -f "$FONT_DIR"
+    fi
+    info "$FONT_NAME Nerd Font 安装完成"
+fi
+
+echo ""
+
+# ============================================
+# 第四步：创建符号链接
 # ============================================
 echo "--- 创建符号链接 ---"
 echo ""

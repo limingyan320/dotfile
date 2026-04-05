@@ -49,6 +49,18 @@ require("lazy").setup({
       },
     },
   },
+  -- 底部状态栏（箭头分隔符，显示模式/文件/路径/git 分支等）
+  {
+    "nvim-lualine/lualine.nvim",
+    dependencies = { "nvim-tree/nvim-web-devicons" },
+    event = "VeryLazy",
+    opts = {
+      options = {
+        section_separators = { left = "", right = "" },
+        component_separators = { left = "", right = "" },
+      },
+    },
+  },
   -- 文件搜索（Ctrl+P 搜文件，<leader>fg 全局搜内容）
   {
     "nvim-telescope/telescope.nvim",
