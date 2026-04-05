@@ -10,6 +10,10 @@ if not vim.uv.fs_stat(lazypath) then
   })
 end
 vim.opt.rtp:prepend(lazypath)
+vim.opt.number = true
+vim.opt.relativenumber = true
+vim.opt.clipboard = "unnamedplus"
+vim.opt.autoread = true -- 文件被外部修改时自动重新读取
 
 vim.g.mapleader = " "
 vim.opt.termguicolors = true
@@ -17,6 +21,10 @@ vim.opt.termguicolors = true
 -- 缩进后保持选中
 vim.keymap.set("v", "<", "<gv")
 vim.keymap.set("v", ">", ">gv")
+
+-- H/L 快速跳转行首行尾（原始 0/$ 仍可用）
+vim.keymap.set({ "n", "v" }, "H", "^")
+vim.keymap.set({ "n", "v" }, "L", "$")
 
 require("lazy").setup({
   {
@@ -65,30 +73,19 @@ require("lazy").setup({
   {
     "nvim-telescope/telescope.nvim",
     dependencies = { "nvim-lua/plenary.nvim" },
-    config = function()
-      local actions = require("telescope.actions")
-      local action_state = require("telescope.actions.state")
-
-      -- Ctrl+H 在 telescope 内切换隐藏文件显示
-      local show_hidden = false
-      local toggle_hidden = function(prompt_bufnr)
-        show_hidden = not show_hidden
-        local picker = action_state.get_current_picker(prompt_bufnr)
-        local query = picker:_get_prompt()
-        actions.close(prompt_bufnr)
-        require("telescope.builtin").find_files({ hidden = show_hidden, default_text = query })
-      end
-
-      require("telescope").setup({
-        defaults = {
-          mappings = {
-            i = { ["<C-h>"] = toggle_hidden },
+    opts = {
+      defaults = {
+        file_ignore_patterns = { "%.git/" },
+        mappings = {
+          i = {
+            ["<M-v>"] = "select_vertical",   -- Alt+V 左右分屏
+            ["<M-s>"] = "select_horizontal",  -- Alt+S 上下分屏
           },
         },
-      })
-    end,
+      },
+    },
     keys = {
-      { "<C-p>", function() require("telescope.builtin").find_files() end, desc = "Find files" },
+      { "<C-p>", function() require("telescope.builtin").find_files({ hidden = true }) end, desc = "Find files" },
       { "<leader>fg", function() require("telescope.builtin").live_grep() end, desc = "Live grep" },
       { "<leader>fb", function() require("telescope.builtin").buffers() end, desc = "Buffers" },
     },
@@ -144,6 +141,7 @@ require("lazy").setup({
           Lua = {
             workspace = { checkThirdParty = false },
             telemetry = { enable = false },
+            diagnostics = { globals = { "vim" } },
           },
         },
       })

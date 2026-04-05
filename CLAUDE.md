@@ -49,3 +49,7 @@ cd ~/.dotfile && git pull
 - nvim 插件通过 lazy.nvim 管理，`lazy-lock.json` 锁定版本需要一起提交
 - 新增配置工具时在 `install.sh` 里添加对应的 `link_file` 调用
 - install.sh 自动检测自身所在目录，不要硬编码 DOTFILES 路径
+
+## Reference Docs
+
+- **Neovim & Tmux 操作速查**: 当用户询问 nvim/tmux 快捷键、窗口管理、搜索跳转等操作问题时，先读取 `docs/nvim-tmux-cheatsheet.md` 再回答。该文件包含基于本 dotfile 实际配置的个性化快捷键速查表。配置变更后需同步更新此文件。
