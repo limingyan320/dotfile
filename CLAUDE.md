@@ -49,6 +49,7 @@ cd ~/.dotfile && git pull
 - nvim 插件通过 lazy.nvim 管理，`lazy-lock.json` 锁定版本需要一起提交
 - 新增配置工具时在 `install.sh` 里添加对应的 `link_file` 调用
 - install.sh 自动检测自身所在目录，不要硬编码 DOTFILES 路径
+- 用户询问并确认 nvim/tmux 新用法后，需同步更新 `docs/nvim-tmux-cheatsheet.md`
 
 ## Reference Docs
 
