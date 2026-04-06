@@ -2,9 +2,6 @@
 # .zshrc — macOS 专用 (Zsh)
 # ============================================
 
-# 加载通用配置
-source ~/.shared_rc
-
 # --- macOS 专用 PATH ---
 export PATH=$PATH:/usr/local/mysql/bin
 
@@ -22,13 +19,6 @@ source ~/.zsh/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 export CLICOLOR=1
 export LSCOLORS=gxfxcxdxbxegedabagacad
 
-# --- Git 分支提示符 ---
-autoload -Uz vcs_info
-precmd() { vcs_info }
-zstyle ':vcs_info:git:*' formats ' (%b)'
-setopt PROMPT_SUBST
-PROMPT='%F{cyan}%~%f%F{red}${vcs_info_msg_0_}%f $ '
-
 # --- Conda ---
 # !! Contents within this block are managed by 'conda init' !!
 __conda_setup="$('/Users/lumynous/miniconda3/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
@@ -42,9 +32,6 @@ else
     fi
 fi
 unset __conda_setup
-
-# conda 环境显示在提示符前
-PROMPT='${CONDA_DEFAULT_ENV:+($CONDA_DEFAULT_ENV) }'$PROMPT
 
 # --- macOS 专用函数 ---
 # 切换深色/浅色模式
@@ -72,3 +59,7 @@ alias v5="ssh -N -D 1080 administrator@192.168.100.127"
 
 # Added by Antigravity
 export PATH="/Users/lumynous/.antigravity/antigravity/bin:$PATH"
+export PATH="$HOME/.local/bin:$PATH"
+
+# --- 加载通用配置（必须放在末尾，让 Starship 作为最后设置 PROMPT 的人）---
+source ~/.shared_rc

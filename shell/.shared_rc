@@ -21,7 +21,10 @@ alias ...='cd ../..'
 # --- 加载机器本地的秘密配置（API key 等，不进 git）---
 [ -f "$HOME/.secrets" ] && source "$HOME/.secrets"
 
+export PATH="$HOME/.local/bin:$PATH"
+
 # --- Starship prompt ---
+# 必须放在文件末尾，让 Starship 作为最后设置 PROMPT 的人
 if command -v starship &>/dev/null; then
     eval "$(starship init $(basename $SHELL))"
 fi
