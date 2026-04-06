@@ -20,3 +20,4 @@ alias ...='cd ../..'
 
 # --- 加载机器本地的秘密配置（API key 等，不进 git）---
 [ -f "$HOME/.secrets" ] && source "$HOME/.secrets"
+eval "$(starship init bash)"

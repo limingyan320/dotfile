@@ -26,6 +26,14 @@ vim.keymap.set("v", ">", ">gv")
 vim.keymap.set({ "n", "v" }, "H", "^")
 vim.keymap.set({ "n", "v" }, "L", "$")
 
+vim.keymap.set("v", "(", "sa(", { remap = true })
+vim.keymap.set("v", "[", "sa[", { remap = true })
+vim.keymap.set("v", "{", "sa{", { remap = true })
+vim.keymap.set("v", "'", "sa'", { remap = true })
+vim.keymap.set("v", '"', 'sa"', { remap = true })
+vim.keymap.set("v", "`", "sa`", { remap = true })
+
+
 require("lazy").setup({
   {
     "folke/tokyonight.nvim",
@@ -176,4 +184,14 @@ require("lazy").setup({
       },
     },
   },
+  {
+      "echasnovski/mini.pairs",
+      event = "VeryLazy",
+      opts = {},
+  },
+  {
+      "echasnovski/mini.surround",
+      event = "VeryLazy",
+      opts = {},
+  }
 })
