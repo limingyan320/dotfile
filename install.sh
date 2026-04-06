@@ -164,7 +164,8 @@ else
     TMP_DIR="$(mktemp -d)"
     curl -fsSL "$FONT_URL" -o "$TMP_DIR/${FONT_NAME}.tar.xz"
     mkdir -p "$FONT_DIR"
-    tar -xf "$TMP_DIR/${FONT_NAME}.tar.xz" -C "$FONT_DIR" --wildcards '*.ttf'
+    tar -xf "$TMP_DIR/${FONT_NAME}.tar.xz" -C "$TMP_DIR"
+    find "$TMP_DIR" -name '*.ttf' -exec mv {} "$FONT_DIR/" \;
     rm -rf "$TMP_DIR"
     # Linux 刷新字体缓存
     if [ "$PLATFORM" = "linux" ] && command -v fc-cache &>/dev/null; then
