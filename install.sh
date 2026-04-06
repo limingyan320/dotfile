@@ -110,6 +110,20 @@ case "$PKG_MANAGER" in
         ;;
 esac
 
+# 第 2.5 步,安装 Starship
+echo "---安装 Starship---"
+echo ""
+
+if command -v starship &>/dev/null; then
+    warn "Starship已安装,跳过"
+else
+    info "正在安装 Starship"
+    curl -sS https://starship.rs/install.sh | sh -s -- --yes
+    info "Starship 安装完成"
+fi
+
+echo ""
+
 # macOS: 安装 zsh 插件
 if [ "$PLATFORM" = "macos" ]; then
     mkdir -p "$HOME/.zsh"
