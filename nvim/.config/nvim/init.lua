@@ -82,22 +82,60 @@ require("lazy").setup({
   {
     "nvim-telescope/telescope.nvim",
     dependencies = { "nvim-lua/plenary.nvim" },
-    opts = {
-      defaults = {
-        file_ignore_patterns = { "%.git/" },
-        mappings = {
-          i = {
-            ["<M-v>"] = "select_vertical",   -- Alt+V 左右分屏
-            ["<M-s>"] = "select_horizontal",  -- Alt+S 上下分屏
+    config = function()
+      local telescope = require("telescope")
+      local actions = require("telescope.actions")
+      local action_state = require("telescope.actions.state")
+      local builtin = require("telescope.builtin")
+
+      -- 找当前文件所在的项目根目录（git 根，没有则用文件目录）
+      local function project_root()
+        local file = vim.api.nvim_buf_get_name(0)
+        local dir = (file ~= "" and vim.fn.fnamemodify(file, ":p:h")) or vim.fn.getcwd()
+        local git = vim.fn.systemlist({ "git", "-C", dir, "rev-parse", "--show-toplevel" })[1]
+        if vim.v.shell_error == 0 and git and git ~= "" then return git end
+        return dir
+      end
+
+      -- 切换显示隐藏文件 / 忽略 .gitignore，保留当前输入
+      local function toggle_hidden(prompt_bufnr)
+        local line = action_state.get_current_line()
+        local picker = action_state.get_current_picker(prompt_bufnr)
+        local cwd = picker.cwd or project_root()
+        actions.close(prompt_bufnr)
+        builtin.find_files({
+          cwd = cwd,
+          hidden = true,
+          no_ignore = true,
+          default_text = line,
+        })
+      end
+
+      telescope.setup({
+        defaults = {
+          file_ignore_patterns = {
+            "%.git/", "node_modules/", "%.DS_Store", "target/", "dist/", "build/",
+          },
+          mappings = {
+            i = {
+              ["<M-v>"] = "select_vertical",
+              ["<M-s>"] = "select_horizontal",
+              ["<C-h>"] = toggle_hidden,
+            },
           },
         },
-      },
-    },
-    keys = {
-      { "<C-p>", function() require("telescope.builtin").find_files({ hidden = true }) end, desc = "Find files" },
-      { "<leader>fg", function() require("telescope.builtin").live_grep() end, desc = "Live grep" },
-      { "<leader>fb", function() require("telescope.builtin").buffers() end, desc = "Buffers" },
-    },
+      })
+
+      vim.keymap.set("n", "<C-p>", function()
+        builtin.find_files({ cwd = project_root() })
+      end, { desc = "Find files (project root)" })
+
+      vim.keymap.set("n", "<leader>fg", function()
+        builtin.live_grep({ cwd = project_root() })
+      end, { desc = "Live grep (project root)" })
+
+      vim.keymap.set("n", "<leader>fb", builtin.buffers, { desc = "Buffers" })
+    end,
   },
   -- Git 侧边栏标记（增删改彩色竖条）
   {

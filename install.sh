@@ -3,8 +3,9 @@
 # install.sh — 一键安装 dotfiles（创建符号链接）
 # 用法: bash ~/.dotfile/install.sh
 # ============================================
-
-set -e
+# 注意：本脚本故意不开 set -e。
+# 软件 / 字体安装可能因网络失败，但符号链接步骤必须能跑完，
+# 这样即便没网也能至少把配置链接好，等有网再补装软件。
 
 # 自动检测脚本所在目录（不硬编码路径）
 DOTFILES="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -93,15 +94,30 @@ case "$PKG_MANAGER" in
         ;;
     apt)
         info "正在更新软件包列表..."
-        sudo apt update
-        for pkg in neovim tmux git xclip bash-completion; do
+        sudo apt update || warn "apt update 失败（可能是网络/代理问题），继续尝试安装已缓存的包"
+        # neovim 单独处理：jammy 的 apt 仓库版本是 0.6.1，本仓库插件需要 ≥0.9
+        for pkg in tmux git xclip bash-completion; do
             if dpkg -s "$pkg" &>/dev/null; then
                 warn "$pkg 已安装，跳过"
             else
                 info "正在安装 $pkg..."
-                sudo apt install -y "$pkg"
+                sudo apt install -y "$pkg" || warn "$pkg 安装失败，跳过（可能是网络问题）"
             fi
         done
+        # neovim：优先 AppImage，避免 apt 仓库太旧
+        if command -v nvim &>/dev/null && nvim --version | head -1 | awk '{print $2}' | grep -qE '^v?(0\.(9|[1-9][0-9])|[1-9])'; then
+            warn "neovim $(nvim --version | head -1) 已满足版本要求，跳过"
+        else
+            info "正在下载 Neovim AppImage 到 ~/.local/bin/nvim（apt 仓库版本太旧，本配置需要 ≥0.9）..."
+            mkdir -p "$HOME/.local/bin"
+            if curl -fsSL https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.appimage -o "$HOME/.local/bin/nvim"; then
+                chmod +x "$HOME/.local/bin/nvim"
+                info "Neovim AppImage 安装完成（确保 ~/.local/bin 在 PATH 中）"
+            else
+                warn "Neovim AppImage 下载失败（网络/代理问题），请稍后手动安装："
+                warn "  curl -fsSL https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.appimage -o ~/.local/bin/nvim && chmod +x ~/.local/bin/nvim"
+            fi
+        fi
         ;;
     none)
         error "没有找到包管理器 (brew/rpm-ostree/dnf/apt)"
@@ -118,8 +134,11 @@ if command -v starship &>/dev/null; then
     warn "Starship已安装,跳过"
 else
     info "正在安装 Starship"
-    curl -sS https://starship.rs/install.sh | sh -s -- --yes
-    info "Starship 安装完成"
+    if curl -sS https://starship.rs/install.sh | sh -s -- --yes; then
+        info "Starship 安装完成"
+    else
+        warn "Starship 安装失败（网络/代理问题），跳过"
+    fi
 fi
 
 echo ""
@@ -162,16 +181,19 @@ else
     info "正在安装 $FONT_NAME Nerd Font..."
     FONT_URL="https://github.com/ryanoasis/nerd-fonts/releases/latest/download/${FONT_NAME}.tar.xz"
     TMP_DIR="$(mktemp -d)"
-    curl -fsSL "$FONT_URL" -o "$TMP_DIR/${FONT_NAME}.tar.xz"
-    mkdir -p "$FONT_DIR"
-    tar -xf "$TMP_DIR/${FONT_NAME}.tar.xz" -C "$TMP_DIR"
-    find "$TMP_DIR" -name '*.ttf' -exec mv {} "$FONT_DIR/" \;
-    rm -rf "$TMP_DIR"
-    # Linux 刷新字体缓存
-    if [ "$PLATFORM" = "linux" ] && command -v fc-cache &>/dev/null; then
-        fc-cache -f "$FONT_DIR"
+    if curl -fsSL "$FONT_URL" -o "$TMP_DIR/${FONT_NAME}.tar.xz"; then
+        mkdir -p "$FONT_DIR"
+        tar -xf "$TMP_DIR/${FONT_NAME}.tar.xz" -C "$TMP_DIR"
+        find "$TMP_DIR" -name '*.ttf' -exec mv {} "$FONT_DIR/" \;
+        # Linux 刷新字体缓存
+        if [ "$PLATFORM" = "linux" ] && command -v fc-cache &>/dev/null; then
+            fc-cache -f "$FONT_DIR"
+        fi
+        info "$FONT_NAME Nerd Font 安装完成"
+    else
+        warn "字体下载失败（网络/代理问题），跳过"
     fi
-    info "$FONT_NAME Nerd Font 安装完成"
+    rm -rf "$TMP_DIR"
 fi
 
 echo ""

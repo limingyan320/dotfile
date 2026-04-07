@@ -73,10 +73,10 @@
 
 | 按键 | 操作 |
 |------|------|
-| `Ctrl+P` | 搜文件名（类似 VS Code Ctrl+P） |
-| `Space fg` | 全局内容搜索（类似 VS Code Ctrl+Shift+F） |
+| `Ctrl+P` | 搜文件名（基于当前文件的 git 根目录，默认隐藏 .git/node_modules 等） |
+| `Space fg` | 全局内容搜索（同样以 git 根为范围） |
 | `Space fb` | 搜已打开 buffer |
-| Telescope 内 `Ctrl+H` | 切换显示隐藏文件 |
+| Telescope 内 `Ctrl+H` | 切换：显示隐藏文件 + 忽略 .gitignore（保留已输入内容） |
 | Telescope 内 `Ctrl+J/K` | 上下移动 |
 | Telescope 内 `Ctrl+U/D` | 预览窗口翻页 |
 
