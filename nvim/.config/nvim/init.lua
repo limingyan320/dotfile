@@ -131,10 +131,9 @@ require("lazy").setup({
     "williamboman/mason-lspconfig.nvim",
     dependencies = { "williamboman/mason.nvim", "neovim/nvim-lspconfig" },
     opts = {
-      ensure_installed = {
-        "lua_ls", "pyright", "ts_ls",
-      },
-      automatic_installation = true,
+      -- 不自动安装，避免在无网络/代理异常的机器上启动时报错
+      -- 需要 LSP 时在对应机器上手动运行 :MasonInstall <server>
+      -- 推荐安装：lua_ls, pyright, ts_ls
     },
   },
   {
