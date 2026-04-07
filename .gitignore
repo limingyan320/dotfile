@@ -1,5 +1,8 @@
 # 敏感信息不进 git
 .secrets
+
+# Claude Code 本地配置
+.claude/
 *.backup.*
 
 # OS
