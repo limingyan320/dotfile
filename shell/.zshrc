@@ -5,6 +5,9 @@
 # --- macOS 专用 PATH ---
 export PATH=$PATH:/usr/local/mysql/bin
 
+# --- 键位模式（emacs，确保 Ctrl+A/E 等行编辑快捷键正常工作）---
+bindkey -e
+
 # --- Zsh 补全 ---
 autoload -Uz compinit
 compinit
