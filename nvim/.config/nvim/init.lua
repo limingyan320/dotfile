@@ -33,6 +33,76 @@ if vim.env.SSH_TTY or vim.env.SSH_CONNECTION or vim.env.XDG_SESSION_TYPE == "tty
 end
 vim.opt.autoread = true -- 文件被外部修改时自动重新读取
 
+-- netrw (内置文件浏览器) 默认显示风格：
+--   liststyle=1  长格式，显示权限/大小/时间，接近 ls -l
+--   sort_by=time / sort_direction=reverse  按时间倒序，最新的在上面
+--   list_hide 隐藏 .pyc 等噪声文件（gh 可临时切换显示/隐藏）
+vim.g.netrw_liststyle = 1
+vim.g.netrw_sort_by = "time"
+vim.g.netrw_sort_direction = "reverse"
+vim.g.netrw_sizestyle = "H" -- 人类可读 (1.2K, 3.4M)
+vim.g.netrw_banner = 1      -- 保留顶部 banner，想去掉改成 0
+vim.g.netrw_hide = 1
+vim.g.netrw_list_hide = [[\.pyc$,\.git/$,\.DS_Store$]]
+
+-- Vinegar 风格：按 - 从任意文件跳回它所在目录的 netrw 浏览视图。
+-- 这样"进入文件 -> 看完 -> 按 - 回到文件列表"就不会意外退出 nvim。
+-- netrw 内部的 - (上一级目录) 是 buffer-local 映射，会覆盖这个全局映射，所以两者不冲突。
+vim.keymap.set("n", "-", "<cmd>Explore<cr>", { desc = "Open netrw in current file's dir" })
+
+-- 在 netrw 浏览时，随手能看到/复制绝对路径：
+--   1) winbar 常驻显示当前浏览目录的绝对路径（始终可见）
+--   2) gy 复制光标下文件的完整绝对路径到系统剪贴板（和无名寄存器）
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = "netrw",
+  callback = function()
+    vim.opt_local.winbar = " %#Directory# %{get(b:,'netrw_curdir','')} "
+    vim.keymap.set("n", "gy", function()
+      local dir = vim.b.netrw_curdir or vim.fn.getcwd()
+      local fname = vim.fn.expand("<cfile>")
+      if fname == nil or fname == "" then
+        vim.notify("光标下没有识别到文件名", vim.log.levels.WARN)
+        return
+      end
+      local sep = dir:sub(-1) == "/" and "" or "/"
+      local full = dir .. sep .. fname
+      vim.fn.setreg("+", full)
+      vim.fn.setreg('"', full)
+      vim.notify("已复制: " .. full)
+    end, { buffer = true, desc = "Yank abs path of file under cursor" })
+  end,
+})
+
+-- 任意已打开的文件里，<leader>yp 复制当前 buffer 的绝对路径
+vim.keymap.set("n", "<leader>yp", function()
+  local path = vim.fn.expand("%:p")
+  if path == "" then
+    vim.notify("当前 buffer 没有文件名", vim.log.levels.WARN)
+    return
+  end
+  vim.fn.setreg("+", path)
+  vim.fn.setreg('"', path)
+  vim.notify("已复制: " .. path)
+end, { desc = "Yank current buffer abs path" })
+
+-- autoread 本身只在 nvim 有机会检查时才生效。终端里没有 FocusGained 事件，
+-- Claude/外部工具改文件后 nvim 不会自动发现。这里在光标停顿、进入 buffer、
+-- 终端获得焦点时主动调用 checktime，并在文件被外部改动后给出提示。
+vim.api.nvim_create_autocmd({ "FocusGained", "BufEnter", "CursorHold", "CursorHoldI", "TermLeave" }, {
+  callback = function()
+    if vim.fn.mode() ~= "c" and vim.fn.getcmdwintype() == "" then
+      vim.cmd("checktime")
+    end
+  end,
+})
+vim.api.nvim_create_autocmd("FileChangedShellPost", {
+  callback = function()
+    vim.notify("文件被外部修改，已重新加载", vim.log.levels.WARN)
+  end,
+})
+-- 缩短 CursorHold 触发间隔（默认 4000ms），让外部改动几乎即时可见
+vim.opt.updatetime = 500
+
 vim.g.mapleader = " "
 vim.opt.termguicolors = true
 
