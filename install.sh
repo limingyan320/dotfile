@@ -256,4 +256,28 @@ if [ ! -f "$HOME/.secrets" ]; then
 fi
 
 echo ""
+
+# ============================================
+# Claude Code 插件
+# ============================================
+echo "--- Claude Code 插件 ---"
+echo ""
+
+if command -v claude &>/dev/null; then
+    CLAUDE_NOTIFY_BIN="$HOME/.claude/plugins/marketplaces/claude-notifications-go/bin/claude-notifications"
+    if [ -f "$CLAUDE_NOTIFY_BIN" ]; then
+        warn "claude-notifications-go 已安装，跳过"
+    else
+        info "正在安装 claude-notifications-go..."
+        if curl -fsSL https://raw.githubusercontent.com/777genius/claude-notifications-go/main/bin/bootstrap.sh | bash; then
+            info "claude-notifications-go 安装完成"
+        else
+            warn "claude-notifications-go 安装失败（网络/代理问题），跳过"
+        fi
+    fi
+else
+    warn "claude CLI 未找到，跳过 claude-notifications-go 安装（装好 claude 后重跑 install.sh）"
+fi
+
+echo ""
 echo "安装完成!"
