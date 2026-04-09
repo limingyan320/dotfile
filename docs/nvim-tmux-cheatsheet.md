@@ -272,7 +272,7 @@ browser 内（telescope 默认键）：
 
 | 按键 | 操作 |
 |------|------|
-| `prefix c` | 新建，继承当前 pane 的本地路径 |
+| `prefix c` | 新建；本地 shell 继承当前路径，ssh shell 复用远端登录并尝试回到远端当前目录 |
 | `prefix ,` | 重命名 |
 | `prefix n` / `prefix p` | 下/上一个 |
 | `prefix 数字` | 跳到第 N 个 |
@@ -285,9 +285,10 @@ browser 内（telescope 默认键）：
 
 | 按键 | 操作 |
 |------|------|
-| `prefix %` | 向右分割，继承当前 pane 的本地路径 |
-| `prefix "` | 向下分割，继承当前 pane 的本地路径 |
-| `prefix v` | 向左分割（自定义），继承当前 pane 的本地路径 |
+| `prefix %` | 向右分割；本地 shell 继承当前路径，ssh shell 复用远端登录并尝试回到远端当前目录 |
+| `prefix "` | 向下分割；本地 shell 继承当前路径，ssh shell 复用远端登录并尝试回到远端当前目录 |
+| `prefix v` | 向左分割（自定义）；本地 shell 继承当前路径，ssh shell 复用远端登录并尝试回到远端当前目录 |
+| `prefix s` | 向上分割（自定义）；本地 shell 继承当前路径，ssh shell 复用远端登录并尝试回到远端当前目录 |
 
 ### 切换
 
@@ -335,3 +336,7 @@ browser 内（telescope 默认键）：
 | `q` | 退出 copy mode |
 
 剪贴板自动检测优先级：macOS > Wayland > X11 > WSL
+
+> 说明：ssh 复用依赖两端 shell 都加载本仓库里的 `shell/.shared_rc`。如果远端机器没有这套 dotfiles，tmux 无法可靠得知远端当前目录，因此会退化为普通新 pane。
+>
+> 首次启用这套能力后，需要先执行一次 `bash ~/.dotfiles/setup.sh` 创建辅助脚本链接，再在 tmux 里 `tmux source-file ~/.tmux.conf` 重新加载配置。

@@ -264,6 +264,8 @@ link_file() {
 link_file "$DOTFILES/shell/.shared_rc"          "$HOME/.shared_rc"
 link_file "$DOTFILES/nvim/.config/nvim"          "$HOME/.config/nvim"
 link_file "$DOTFILES/tmux/.tmux.conf"            "$HOME/.tmux.conf"
+link_file "$DOTFILES/tmux/.tmux-context.sh"      "$HOME/.tmux-context.sh"
+link_file "$DOTFILES/tmux/open-context-pane.sh"  "$HOME/.tmux-open-context-pane.sh"
 link_file "$DOTFILES/starship/starship.toml"     "$HOME/.config/starship.toml"
 link_file "$DOTFILES/fastfetch/config.jsonc"     "$HOME/.config/fastfetch/config.jsonc"
 
