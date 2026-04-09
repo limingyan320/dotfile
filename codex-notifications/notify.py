@@ -3,6 +3,7 @@ import json
 import os
 import platform
 import shutil
+import socket
 import subprocess
 import sys
 from html import escape
@@ -64,9 +65,17 @@ def build_body(payload):
         else:
             body = f"事件: {event_type}"
 
+    location_lines = []
+    hostname = trim(socket.gethostname(), 48)
+    if hostname:
+        location_lines.append(f"机器: {hostname}")
+
     cwd = payload.get("cwd")
     if isinstance(cwd, str) and cwd.strip():
-        body = f"{body}\n{trim(cwd, 120)}"
+        location_lines.append(f"路径: {trim(cwd, 140)}")
+
+    if location_lines:
+        body = f"{body}\n" + "\n".join(location_lines)
     return body
 
 

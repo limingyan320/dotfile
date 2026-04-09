@@ -8,6 +8,14 @@ final class NotificationWindow: NSPanel {
     override var canBecomeMain: Bool { false }
 }
 
+final class ClickableView: NSView {
+    var onClick: (() -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        onClick?()
+    }
+}
+
 func loadIcon(from path: String?) -> NSImage? {
     guard let path, !path.isEmpty else { return nil }
     return NSImage(contentsOfFile: path)
@@ -24,15 +32,15 @@ func makeLabel(text: String, font: NSFont, color: NSColor, lines: Int) -> NSText
 }
 
 func buildWindow(title: String, body: String, icon: NSImage?) -> NotificationWindow {
-    let width: CGFloat = 384
-    let minHeight: CGFloat = 108
-    let iconSize: CGFloat = 52
-    let padding: CGFloat = 14
+    let width: CGFloat = 428
+    let minHeight: CGFloat = 126
+    let iconSize: CGFloat = 56
+    let padding: CGFloat = 16
     let textWidth = width - padding * 3 - iconSize
 
     let titleLabel = makeLabel(
         text: title,
-        font: .systemFont(ofSize: 15, weight: .bold),
+        font: .systemFont(ofSize: 16, weight: .bold),
         color: .white,
         lines: 4
     )
@@ -42,13 +50,13 @@ func buildWindow(title: String, body: String, icon: NSImage?) -> NotificationWin
         text: body,
         font: .systemFont(ofSize: 13, weight: .medium),
         color: NSColor(calibratedWhite: 0.95, alpha: 1.0),
-        lines: 3
+        lines: 5
     )
     bodyLabel.preferredMaxLayoutWidth = textWidth
 
     let stack = NSStackView(views: [titleLabel, bodyLabel])
     stack.orientation = .vertical
-    stack.spacing = 6
+    stack.spacing = 7
     stack.alignment = .leading
     stack.translatesAutoresizingMaskIntoConstraints = false
 
@@ -64,7 +72,7 @@ func buildWindow(title: String, body: String, icon: NSImage?) -> NotificationWin
         iconView.heightAnchor.constraint(equalToConstant: iconSize),
     ])
 
-    let content = NSView()
+    let content = ClickableView()
     content.wantsLayer = true
     content.layer?.backgroundColor = NSColor(calibratedRed: 0.12, green: 0.13, blue: 0.16, alpha: 0.96).cgColor
     content.layer?.cornerRadius = 20
@@ -132,10 +140,11 @@ app.setActivationPolicy(.accessory)
 
 let window = buildWindow(title: title, body: body, icon: icon)
 position(window: window)
-
-let closeSelector = #selector(NSApplication.terminate(_:))
-let recognizer = NSClickGestureRecognizer(target: app, action: closeSelector)
-window.contentView?.addGestureRecognizer(recognizer)
+if let content = window.contentView as? ClickableView {
+    content.onClick = {
+        app.terminate(nil)
+    }
+}
 
 window.alphaValue = 0
 window.orderFrontRegardless()
@@ -143,15 +152,6 @@ window.orderFrontRegardless()
 NSAnimationContext.runAnimationGroup { context in
     context.duration = 0.18
     window.animator().alphaValue = 1
-}
-
-DispatchQueue.main.asyncAfter(deadline: .now() + 4.8) {
-    NSAnimationContext.runAnimationGroup({ context in
-        context.duration = 0.2
-        window.animator().alphaValue = 0
-    }, completionHandler: {
-        app.terminate(nil)
-    })
 }
 
 app.run()
