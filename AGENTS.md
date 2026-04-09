@@ -17,7 +17,7 @@ shell/.bashrc        <- Linux/WSL 专用：bash 补全、PS1 提示符
 shell/.bash_profile  <- Linux/WSL 的 login shell 入口，统一转发到 .bashrc，保证 SSH 登录也加载 .shared_rc
 nvim/.config/nvim/   <- Neovim 配置，跨平台通用，使用 lazy.nvim 管理插件
 tmux/.tmux.conf      <- tmux 配置，跨平台通用，剪贴板自动检测 (pbcopy/wl-copy/xclip/clip.exe)
-codex-notifications/ <- Codex 原生 notify 配置与跨平台系统弹窗脚本，apply.sh 合并进 ~/.codex/config.toml
+codex-notifications/ <- Codex 原生 notify 配置；macOS 使用仓库内 Swift 自定义弹窗，其他平台走系统通知；apply.sh 合并进 ~/.codex/config.toml
 claude-notifications/<- claude-notifications-go 插件的自定义资源（音效/图标/标题），apply.sh 合并进 ~/.claude/claude-notifications-go/config.json
 setup.sh             <- 一键安装/同步脚本，自动检测包管理器 (brew/rpm-ostree/dnf/apt) 和平台，重跑安全
 ```

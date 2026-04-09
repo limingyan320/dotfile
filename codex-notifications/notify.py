@@ -11,8 +11,15 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 TITLES_FILE = HERE / "titles.json"
+MACOS_POPUP_SCRIPT = HERE / "popup.swift"
+ICON_CANDIDATES = [
+    HERE / "icon.png",
+    HERE / "icon.jpg",
+    HERE.parent / "claude-notifications" / "assets" / "icon.png",
+    HERE.parent / "claude-notifications" / "assets" / "icon.jpg",
+]
 DEFAULT_TITLES = {
-    "agent-turn-complete": "(๑•̀ㅂ•́)و✧ Codex 本轮结束了",
+    "agent-turn-complete": "(๑•̀ㅂ•́)و✧ 主人,沈什已经完成任务了喵！",
     "approval-requested": "(｡•́︿•̀｡) Codex 需要你确认",
 }
 
@@ -76,6 +83,31 @@ def dump_debug_payload(payload):
         pass
 
 
+def find_icon():
+    for path in ICON_CANDIDATES:
+        if path.is_file():
+            return path
+    return None
+
+
+def notify_macos_popup(title, body, icon_path):
+    if not MACOS_POPUP_SCRIPT.is_file():
+        return False
+    cmd = ["swift", str(MACOS_POPUP_SCRIPT), title, body]
+    if icon_path:
+        cmd.append(str(icon_path))
+    try:
+        subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except OSError:
+        return False
+    return True
+
+
 def notify_linux(title, body):
     cmd = shutil.which("notify-send")
     if not cmd:
@@ -85,11 +117,29 @@ def notify_linux(title, body):
 
 
 def notify_macos(title, body):
+    icon_path = find_icon()
+    if notify_macos_popup(title, body, icon_path):
+        return True
+
     cmd = shutil.which("osascript")
     if not cmd:
         return False
-    script = f'display notification {json.dumps(body)} with title {json.dumps(title)}'
-    result = subprocess.run([cmd, "-e", script], check=False)
+    # Pass title/body via argv so AppleScript does not need to parse escaped
+    # Unicode content from the inline script source.
+    result = subprocess.run(
+        [
+            cmd,
+            "-e",
+            "on run argv",
+            "-e",
+            "display notification (item 2 of argv) with title (item 1 of argv)",
+            "-e",
+            "end run",
+            title,
+            body,
+        ],
+        check=False,
+    )
     return result.returncode == 0
 
 
