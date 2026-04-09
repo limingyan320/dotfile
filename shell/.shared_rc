@@ -24,6 +24,12 @@ alias claude='claude --dangerously-skip-permissions'
 
 export PATH="$HOME/.local/bin:$PATH"
 
+# --- fastfetch：新开交互式终端时展示系统信息 ---
+# 只在交互式 shell 且不在 tmux 内部时运行（避免每个 pane 都刷一屏）
+if [[ $- == *i* ]] && [ -z "$TMUX" ] && command -v fastfetch &>/dev/null; then
+    fastfetch
+fi
+
 # --- Starship prompt ---
 # 必须放在文件末尾，让 Starship 作为最后设置 PROMPT 的人
 if command -v starship &>/dev/null; then

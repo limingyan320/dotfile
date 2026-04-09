@@ -56,7 +56,7 @@ echo ""
 
 case "$PKG_MANAGER" in
     brew)
-        for pkg in neovim tmux git; do
+        for pkg in neovim tmux git fastfetch; do
             if brew list "$pkg" &>/dev/null; then
                 warn "$pkg 已安装，跳过"
             else
@@ -67,7 +67,7 @@ case "$PKG_MANAGER" in
         ;;
     rpm-ostree)
         NEED_INSTALL=()
-        for pkg in neovim tmux git wl-clipboard bash-completion; do
+        for pkg in neovim tmux git wl-clipboard bash-completion fastfetch; do
             if rpm -q "$pkg" &>/dev/null; then
                 warn "$pkg 已安装，跳过"
             else
@@ -83,7 +83,7 @@ case "$PKG_MANAGER" in
         fi
         ;;
     dnf)
-        for pkg in neovim tmux git wl-clipboard bash-completion; do
+        for pkg in neovim tmux git wl-clipboard bash-completion fastfetch; do
             if rpm -q "$pkg" &>/dev/null; then
                 warn "$pkg 已安装，跳过"
             else
@@ -96,7 +96,7 @@ case "$PKG_MANAGER" in
         info "正在更新软件包列表..."
         sudo apt update || warn "apt update 失败（可能是网络/代理问题），继续尝试安装已缓存的包"
         # neovim 单独处理：jammy 的 apt 仓库版本是 0.6.1，本仓库插件需要 ≥0.9
-        for pkg in tmux git xclip bash-completion; do
+        for pkg in tmux git xclip bash-completion fastfetch; do
             if dpkg -s "$pkg" &>/dev/null; then
                 warn "$pkg 已安装，跳过"
             else
@@ -239,6 +239,7 @@ link_file "$DOTFILES/shell/.shared_rc"          "$HOME/.shared_rc"
 link_file "$DOTFILES/nvim/.config/nvim"          "$HOME/.config/nvim"
 link_file "$DOTFILES/tmux/.tmux.conf"            "$HOME/.tmux.conf"
 link_file "$DOTFILES/starship/starship.toml"     "$HOME/.config/starship.toml"
+link_file "$DOTFILES/fastfetch/config.jsonc"     "$HOME/.config/fastfetch/config.jsonc"
 
 # --- 平台专属链接 ---
 if [ "$PLATFORM" = "macos" ]; then
