@@ -84,6 +84,9 @@ vim.keymap.set("v", "{", "sa{", { remap = true })
 vim.keymap.set("v", "'", "sa'", { remap = true })
 vim.keymap.set("v", '"', 'sa"', { remap = true })
 vim.keymap.set("v", "`", "sa`", { remap = true })
+vim.keymap.set("x", "#", function()
+  require("Comment.api").toggle.linewise(vim.fn.visualmode())
+end, { desc = "Toggle comment for selection" })
 
 
 require("lazy").setup({
@@ -261,6 +264,12 @@ require("lazy").setup({
       { "<leader>gh", "<cmd>DiffviewFileHistory %<cr>", desc = "File history" },
       { "<leader>gq", "<cmd>DiffviewClose<cr>", desc = "Close diff" },
     },
+    opts = {},
+  },
+  -- 注释：可视模式选中多行后按 # 切换对应语言的行注释
+  {
+    "numToStr/Comment.nvim",
+    event = { "BufReadPre", "BufNewFile" },
     opts = {},
   },
   -- 光标残影动画
