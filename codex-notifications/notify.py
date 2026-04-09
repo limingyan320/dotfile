@@ -68,9 +68,20 @@ def build_body(payload):
             body = f"事件: {event_type}"
 
     location_lines = []
-    hostname = trim(socket.gethostname(), 48)
+    hostname = payload.get("hostname")
+    if not isinstance(hostname, str) or not hostname.strip():
+        hostname = socket.gethostname()
+    hostname = trim(hostname, 48)
     if hostname:
         location_lines.append(f"机器: {hostname}")
+
+    ssh_target = payload.get("ssh-target")
+    if isinstance(ssh_target, str) and ssh_target.strip() and ssh_target != hostname:
+        location_lines.append(f"SSH: {trim(ssh_target, 48)}")
+
+    remote_ip = payload.get("remote-ip")
+    if isinstance(remote_ip, str) and remote_ip.strip():
+        location_lines.append(f"IP: {trim(remote_ip, 64)}")
 
     cwd = payload.get("cwd")
     if isinstance(cwd, str) and cwd.strip():
@@ -107,9 +118,22 @@ def forward_to_local_listener(payload):
     if not os.environ.get("SSH_CONNECTION"):
         return False
 
+    forwarded = dict(payload)
+    hostname = socket.gethostname().strip()
+    if hostname:
+        forwarded["hostname"] = hostname
+
+    ssh_connection = os.environ.get("SSH_CONNECTION", "").split()
+    if len(ssh_connection) >= 4:
+        forwarded["remote-ip"] = ssh_connection[2]
+
+    ssh_target = os.environ.get("HOSTNAME") or os.environ.get("SSH_TTY")
+    if ssh_target:
+        forwarded["ssh-target"] = str(ssh_target)
+
     port = os.environ.get("CODEX_NOTIFY_LISTEN_PORT", "47789")
     url = os.environ.get("CODEX_NOTIFY_FORWARD_URL", f"http://127.0.0.1:{port}/notify")
-    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    data = json.dumps(forwarded, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(
         url,
         data=data,
