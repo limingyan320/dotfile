@@ -272,7 +272,7 @@ browser 内（telescope 默认键）：
 
 | 按键 | 操作 |
 |------|------|
-| `prefix c` | 新建 |
+| `prefix c` | 新建，继承当前 pane 的本地路径 |
 | `prefix ,` | 重命名 |
 | `prefix n` / `prefix p` | 下/上一个 |
 | `prefix 数字` | 跳到第 N 个 |
@@ -285,9 +285,9 @@ browser 内（telescope 默认键）：
 
 | 按键 | 操作 |
 |------|------|
-| `prefix %` | 向右分割 |
-| `prefix "` | 向下分割 |
-| `prefix v` | 向左分割（自定义） |
+| `prefix %` | 向右分割，继承当前 pane 的本地路径 |
+| `prefix "` | 向下分割，继承当前 pane 的本地路径 |
+| `prefix v` | 向左分割（自定义），继承当前 pane 的本地路径 |
 
 ### 切换
 
