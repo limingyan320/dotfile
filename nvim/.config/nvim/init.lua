@@ -33,45 +33,9 @@ if vim.env.SSH_TTY or vim.env.SSH_CONNECTION or vim.env.XDG_SESSION_TYPE == "tty
 end
 vim.opt.autoread = true -- 文件被外部修改时自动重新读取
 
--- netrw (内置文件浏览器) 默认显示风格：
---   liststyle=1  长格式，显示权限/大小/时间，接近 ls -l
---   sort_by=time / sort_direction=reverse  按时间倒序，最新的在上面
---   list_hide 隐藏 .pyc 等噪声文件（gh 可临时切换显示/隐藏）
-vim.g.netrw_liststyle = 1
-vim.g.netrw_sort_by = "time"
-vim.g.netrw_sort_direction = "reverse"
-vim.g.netrw_sizestyle = "H" -- 人类可读 (1.2K, 3.4M)
-vim.g.netrw_banner = 1      -- 保留顶部 banner，想去掉改成 0
-vim.g.netrw_hide = 1
-vim.g.netrw_list_hide = [[\.pyc$,\.git/$,\.DS_Store$]]
-
--- Vinegar 风格：按 - 从任意文件跳回它所在目录的 netrw 浏览视图。
--- 这样"进入文件 -> 看完 -> 按 - 回到文件列表"就不会意外退出 nvim。
--- netrw 内部的 - (上一级目录) 是 buffer-local 映射，会覆盖这个全局映射，所以两者不冲突。
-vim.keymap.set("n", "-", "<cmd>Explore<cr>", { desc = "Open netrw in current file's dir" })
-
--- 在 netrw 浏览时，随手能看到/复制绝对路径：
---   1) winbar 常驻显示当前浏览目录的绝对路径（始终可见）
---   2) gy 复制光标下文件的完整绝对路径到系统剪贴板（和无名寄存器）
-vim.api.nvim_create_autocmd("FileType", {
-  pattern = "netrw",
-  callback = function()
-    vim.opt_local.winbar = " %#Directory# %{get(b:,'netrw_curdir','')} "
-    vim.keymap.set("n", "gy", function()
-      local dir = vim.b.netrw_curdir or vim.fn.getcwd()
-      local fname = vim.fn.expand("<cfile>")
-      if fname == nil or fname == "" then
-        vim.notify("光标下没有识别到文件名", vim.log.levels.WARN)
-        return
-      end
-      local sep = dir:sub(-1) == "/" and "" or "/"
-      local full = dir .. sep .. fname
-      vim.fn.setreg("+", full)
-      vim.fn.setreg('"', full)
-      vim.notify("已复制: " .. full)
-    end, { buffer = true, desc = "Yank abs path of file under cursor" })
-  end,
-})
+-- 用 oil.nvim 替代 netrw 做文件浏览，禁用内置 netrw 以免冲突
+vim.g.loaded_netrw = 1
+vim.g.loaded_netrwPlugin = 1
 
 -- 任意已打开的文件里，<leader>yp 复制当前 buffer 的绝对路径
 vim.keymap.set("n", "<leader>yp", function()
@@ -123,6 +87,36 @@ vim.keymap.set("v", "`", "sa`", { remap = true })
 
 
 require("lazy").setup({
+  -- 文件浏览（替代 netrw）：把目录当 buffer 编辑，按 - 回到父目录
+  {
+    "stevearc/oil.nvim",
+    dependencies = { "nvim-tree/nvim-web-devicons" },
+    lazy = false, -- 需要在启动时接管目录打开（nvim .）
+    keys = {
+      { "-", "<cmd>Oil<cr>", desc = "Open parent directory (oil)" },
+    },
+    opts = {
+      default_file_explorer = true,
+      view_options = {
+        show_hidden = true,
+      },
+      keymaps = {
+        ["gy"] = {
+          desc = "Yank abs path of entry under cursor",
+          callback = function()
+            local oil = require("oil")
+            local entry = oil.get_cursor_entry()
+            local dir = oil.get_current_dir()
+            if not entry or not dir then return end
+            local full = dir .. entry.name
+            vim.fn.setreg("+", full)
+            vim.fn.setreg('"', full)
+            vim.notify("已复制: " .. full)
+          end,
+        },
+      },
+    },
+  },
   {
     "folke/tokyonight.nvim",
     lazy = false,
@@ -168,7 +162,10 @@ require("lazy").setup({
   -- 文件搜索（Ctrl+P 搜文件，<leader>fg 全局搜内容）
   {
     "nvim-telescope/telescope.nvim",
-    dependencies = { "nvim-lua/plenary.nvim" },
+    dependencies = {
+      "nvim-lua/plenary.nvim",
+      "nvim-telescope/telescope-file-browser.nvim",
+    },
     config = function()
       local telescope = require("telescope")
       local actions = require("telescope.actions")
@@ -211,7 +208,32 @@ require("lazy").setup({
             },
           },
         },
+        extensions = {
+          file_browser = {
+            hijack_netrw = false, -- 交给 oil 处理
+            hidden = true,
+            grouped = true, -- 目录排在文件前
+            respect_gitignore = false,
+          },
+        },
       })
+      telescope.load_extension("file_browser")
+
+      -- 目录浏览 picker：可钻进子目录，用 telescope 默认分屏键打开
+      --   <CR>  当前窗口, <C-v> 左右分屏, <C-x> 上下分屏, <C-t> 新标签
+      vim.keymap.set("n", "<leader>fe", function()
+        telescope.extensions.file_browser.file_browser({
+          path = project_root(),
+          select_buffer = true,
+        })
+      end, { desc = "File browser (project root)" })
+
+      vim.keymap.set("n", "<leader>fE", function()
+        telescope.extensions.file_browser.file_browser({
+          path = "%:p:h",
+          select_buffer = true,
+        })
+      end, { desc = "File browser (current file dir)" })
 
       vim.keymap.set("n", "<C-p>", function()
         builtin.find_files({ cwd = project_root() })
