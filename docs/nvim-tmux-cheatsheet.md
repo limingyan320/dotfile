@@ -337,6 +337,6 @@ browser 内（telescope 默认键）：
 
 剪贴板自动检测优先级：macOS > Wayland > X11 > WSL
 
-> 说明：ssh 复用依赖两端 shell 都加载本仓库里的 `shell/.shared_rc`。如果远端机器没有这套 dotfiles，tmux 无法可靠得知远端当前目录，因此会退化为普通新 pane。
+> 说明：ssh 复用依赖两端 shell 都加载本仓库里的 `shell/.shared_rc`。Linux/WSL 远端还需要 `shell/.bash_profile -> .bashrc` 这条登录链路存在，否则通过 SSH 进入的 login shell 不会加载 tmux 上下文 hook。
 >
 > 首次启用这套能力后，需要先执行一次 `bash ~/.dotfiles/setup.sh` 创建辅助脚本链接，再在 tmux 里 `tmux source-file ~/.tmux.conf` 重新加载配置。

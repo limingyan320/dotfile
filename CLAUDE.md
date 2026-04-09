@@ -12,13 +12,14 @@ Cross-platform dotfiles synced via git, targeting macOS (zsh), Linux (Debian/Fed
 shell/.shared_rc     <- 跨平台通用配置（别名、PATH、环境变量），被 .zshrc 和 .bashrc source
 shell/.zshrc         <- macOS 专用：zsh 补全、插件、conda、macOS 函数（dark, sr）
 shell/.bashrc        <- Linux/WSL 专用：bash 补全、PS1 提示符
+shell/.bash_profile  <- Linux/WSL 的 login shell 入口，统一转发到 .bashrc，保证 SSH 登录也加载 .shared_rc
 nvim/.config/nvim/   <- Neovim 配置，跨平台通用，使用 lazy.nvim 管理插件
 tmux/.tmux.conf      <- tmux 配置，跨平台通用，剪贴板自动检测 (pbcopy/wl-copy/xclip/clip.exe)
 claude-notifications/<- claude-notifications-go 插件的自定义资源（音效/图标/标题），apply.sh 合并进 ~/.claude/claude-notifications-go/config.json
 setup.sh             <- 一键安装/同步脚本，自动检测包管理器 (brew/rpm-ostree/dnf/apt) 和平台，重跑安全
 ```
 
-**Shell 配置层级**: `.zshrc` / `.bashrc` -> `source ~/.shared_rc` -> `source ~/.secrets`
+**Shell 配置层级**: macOS `.zshrc -> .shared_rc -> .secrets`；Linux/WSL `.bash_profile -> .bashrc -> .shared_rc -> .secrets`
 
 **敏感信息**: API key 等存放在 `~/.secrets`（已 gitignore），由 `.shared_rc` 自动加载。绝不要把 token 写入本仓库的文件。
 
@@ -40,7 +41,7 @@ cd ~/.dotfile && git pull
 
 - **包管理器**: setup.sh 自动检测 brew/rpm-ostree/dnf/apt，找不到则提示手动安装
 - **剪贴板**: tmux.conf 逐级检测 — macOS (pbcopy)、Wayland (wl-copy)、X11 (xclip)、WSL (clip.exe)
-- **Shell**: macOS 链接 `.zshrc`，Linux/WSL 链接 `.bashrc`，通用配置在 `.shared_rc`
+- **Shell**: macOS 链接 `.zshrc`，Linux/WSL 链接 `.bash_profile` + `.bashrc`，通用配置在 `.shared_rc`
 - **nvim / tmux**: 完全跨平台，不需要区分
 - **支持的发行版**: macOS、Debian/Ubuntu、Fedora/RHEL/Bazzite、WSL
 

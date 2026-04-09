@@ -41,7 +41,7 @@ if command -v starship &>/dev/null; then
     eval "$(starship init $(basename $SHELL))"
 fi
 
-if [[ $- == *i* ]] && [ -n "${TMUX:-}" ] && [ -z "${__DOTFILES_TMUX_HOOKS:-}" ] && typeset -f __dotfiles_tmux_sync_context >/dev/null 2>&1; then
+if [[ $- == *i* ]] && [ -z "${__DOTFILES_TMUX_HOOKS:-}" ] && typeset -f __dotfiles_tmux_sync_context >/dev/null 2>&1 && typeset -f __dotfiles_tmux_context_enabled >/dev/null 2>&1 && __dotfiles_tmux_context_enabled; then
     __DOTFILES_TMUX_HOOKS=1
     if [ -n "${ZSH_VERSION:-}" ]; then
         autoload -Uz add-zsh-hook

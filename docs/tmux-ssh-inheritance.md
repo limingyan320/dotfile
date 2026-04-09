@@ -68,6 +68,12 @@ Observed user report:
 
 This means the current implementation should not be treated as verified.
 
+Additional root cause identified later:
+
+- Linux/bash remote login shells may enter through `.bash_profile` rather than `.bashrc`
+- if `.bash_profile` does not source `.bashrc`, then `.shared_rc` never loads
+- in that case the remote prompt never emits tmux context metadata, so SSH pane/window inheritance degrades to local-only behavior
+
 ## Constraints
 
 - Keep `CLAUDE.md` unchanged unless explicitly requested.

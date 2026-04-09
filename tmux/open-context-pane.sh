@@ -34,7 +34,8 @@ quote_sh() {
 
 pane_title="$(tmux_fmt '#{pane_title}')"
 local_path="$(tmux_fmt '#{pane_current_path}')"
-window_target="$(tmux_fmt '#{session_name}:#{window_index}')"
+session_target="$(tmux_fmt '#{session_id}')"
+window_target="$(tmux_fmt '#{window_id}')"
 
 if [ -z "$local_path" ]; then
     local_path="$HOME"
@@ -53,6 +54,14 @@ case "$action" in
         ;;
 esac
 
+new_window() {
+    if tmux new-window -a -t "$window_target" "$@"; then
+        exit 0
+    fi
+
+    exec tmux new-window -t "$session_target" "$@"
+}
+
 case "$pane_title" in
     dotctx\ ssh\ *)
         rest="${pane_title#dotctx ssh }"
@@ -63,7 +72,7 @@ case "$pane_title" in
                 remote_cmd="cd $(quote_sh "$remote_path") && exec \${SHELL:-/bin/sh} -l"
                 ssh_cmd="ssh -t $(quote_sh "$ssh_target") $(quote_sh "$remote_cmd")"
                 if [ "$action" = "new-window" ]; then
-                    exec tmux new-window -t "$window_target" "$ssh_cmd"
+                    new_window "$ssh_cmd"
                 else
                     exec tmux split-window "${split_args[@]}" -t "$pane_id" "$ssh_cmd"
                 fi
@@ -73,7 +82,7 @@ case "$pane_title" in
 esac
 
 if [ "$action" = "new-window" ]; then
-    exec tmux new-window -t "$window_target" -c "$local_path"
+    new_window -c "$local_path"
 else
     exec tmux split-window "${split_args[@]}" -t "$pane_id" -c "$local_path"
 fi

@@ -273,6 +273,7 @@ link_file "$DOTFILES/fastfetch/config.jsonc"     "$HOME/.config/fastfetch/config
 if [ "$PLATFORM" = "macos" ]; then
     link_file "$DOTFILES/shell/.zshrc"           "$HOME/.zshrc"
 elif [ "$PLATFORM" = "linux" ]; then
+    link_file "$DOTFILES/shell/.bash_profile"    "$HOME/.bash_profile"
     link_file "$DOTFILES/shell/.bashrc"          "$HOME/.bashrc"
 fi
 

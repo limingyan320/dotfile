@@ -9,12 +9,26 @@ __dotfiles_b64() {
 }
 
 __dotfiles_tmux_set_title() {
-    [ -n "${TMUX:-}" ] || return 0
+    __dotfiles_tmux_context_enabled || return 0
     printf '\033]2;%s\033\\' "$1"
 }
 
+__dotfiles_tmux_context_enabled() {
+    if [ -n "${TMUX:-}" ]; then
+        return 0
+    fi
+
+    case "${TERM:-}" in
+        tmux*|screen*)
+            return 0
+            ;;
+    esac
+
+    return 1
+}
+
 __dotfiles_tmux_sync_context() {
-    [ -n "${TMUX:-}" ] || return 0
+    __dotfiles_tmux_context_enabled || return 0
     case $- in
         *i*) ;;
         *) return 0 ;;
