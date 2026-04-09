@@ -78,24 +78,24 @@ if [[ $- == *i* ]] && [ -z "${__DOTFILES_TMUX_HOOKS:-}" ] && typeset -f __dotfil
     __dotfiles_tmux_sync_context
 fi
 
-__dotfiles_codex_ssh_should_forward_notify() {
-    [ -n "${DARWIN_NO_REMOTE_NOTIFY:-}" ] && return 1
-    [ "$(uname -s 2>/dev/null)" = "Darwin" ] || return 1
-    [ -n "${SSH_CONNECTION:-}" ] && return 1
-    command -v ssh >/dev/null 2>&1 || return 1
-    return 0
-}
+if [ "$(uname -s 2>/dev/null)" = "Darwin" ] && [ -z "${SSH_CONNECTION:-}" ]; then
+    __dotfiles_codex_ssh_should_forward_notify() {
+        [ -n "${DARWIN_NO_REMOTE_NOTIFY:-}" ] && return 1
+        command -v ssh >/dev/null 2>&1 || return 1
+        return 0
+    }
 
-ssh() {
-    if __dotfiles_codex_ssh_should_forward_notify; then
-        local forward_spec="127.0.0.1:${CODEX_NOTIFY_LISTEN_PORT}:127.0.0.1:${CODEX_NOTIFY_LISTEN_PORT}"
-        local arg
-        for arg in "$@"; do
-            [ "$arg" = "$forward_spec" ] && command ssh "$@" && return $?
-            [ "$arg" = "-R" ] && command ssh "$@" && return $?
-        done
-        command ssh -R "$forward_spec" "$@"
-    else
-        command ssh "$@"
-    fi
-}
+    ssh() {
+        if __dotfiles_codex_ssh_should_forward_notify; then
+            local forward_spec="127.0.0.1:${CODEX_NOTIFY_LISTEN_PORT}:127.0.0.1:${CODEX_NOTIFY_LISTEN_PORT}"
+            local arg
+            for arg in "$@"; do
+                [ "$arg" = "$forward_spec" ] && command ssh "$@" && return $?
+                [ "$arg" = "-R" ] && command ssh "$@" && return $?
+            done
+            command ssh -R "$forward_spec" "$@"
+        else
+            command ssh "$@"
+        fi
+    }
+fi
