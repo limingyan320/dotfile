@@ -25,6 +25,7 @@ alias ff='fastfetch'
 [ -f "$HOME/.secrets" ] && source "$HOME/.secrets"
 
 export PATH="$HOME/.local/bin:$PATH"
+export CODEX_NOTIFY_LISTEN_PORT="${CODEX_NOTIFY_LISTEN_PORT:-47789}"
 
 # --- tmux pane 上下文同步 ---
 # 让 tmux 新建 pane/window 时既能继承本地路径，也能在 ssh 场景下复用远端 host + cwd。
@@ -56,3 +57,25 @@ if [[ $- == *i* ]] && [ -z "${__DOTFILES_TMUX_HOOKS:-}" ] && typeset -f __dotfil
     fi
     __dotfiles_tmux_sync_context
 fi
+
+__dotfiles_codex_ssh_should_forward_notify() {
+    [ -n "${DARWIN_NO_REMOTE_NOTIFY:-}" ] && return 1
+    [ "$(uname -s 2>/dev/null)" = "Darwin" ] || return 1
+    [ -n "${SSH_CONNECTION:-}" ] && return 1
+    command -v ssh >/dev/null 2>&1 || return 1
+    return 0
+}
+
+ssh() {
+    if __dotfiles_codex_ssh_should_forward_notify; then
+        local forward_spec="127.0.0.1:${CODEX_NOTIFY_LISTEN_PORT}:127.0.0.1:${CODEX_NOTIFY_LISTEN_PORT}"
+        local arg
+        for arg in "$@"; do
+            [ "$arg" = "$forward_spec" ] && command ssh "$@" && return $?
+            [ "$arg" = "-R" ] && command ssh "$@" && return $?
+        done
+        command ssh -R "$forward_spec" "$@"
+    else
+        command ssh "$@"
+    fi
+}

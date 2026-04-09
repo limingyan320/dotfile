@@ -26,17 +26,39 @@ func makeLabel(text: String, font: NSFont, color: NSColor, lines: Int) -> NSText
     label.font = font
     label.textColor = color
     label.maximumNumberOfLines = lines
-    label.lineBreakMode = .byTruncatingTail
+    label.lineBreakMode = .byWordWrapping
+    label.cell?.wraps = true
+    label.cell?.isScrollable = false
+    label.usesSingleLineMode = false
     label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
     return label
 }
 
+func splitBody(_ body: String) -> (String, String?) {
+    let lines = body.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+    var metaStart: Int?
+    for (idx, line) in lines.enumerated() {
+        if line.hasPrefix("机器: ") || line.hasPrefix("路径: ") {
+            metaStart = idx
+            break
+        }
+    }
+    guard let metaStart else {
+        return (body, nil)
+    }
+    let mainText = lines[..<metaStart].joined(separator: "\n")
+    let metaText = lines[metaStart...].joined(separator: "\n")
+    return (mainText, metaText.isEmpty ? nil : metaText)
+}
+
 func buildWindow(title: String, body: String, icon: NSImage?) -> NotificationWindow {
     let width: CGFloat = 428
-    let minHeight: CGFloat = 126
+    let minHeight: CGFloat = 132
+    let maxHeight: CGFloat = 280
     let iconSize: CGFloat = 56
     let padding: CGFloat = 16
     let textWidth = width - padding * 3 - iconSize
+    let (mainBody, metaBody) = splitBody(body)
 
     let titleLabel = makeLabel(
         text: title,
@@ -47,14 +69,23 @@ func buildWindow(title: String, body: String, icon: NSImage?) -> NotificationWin
     titleLabel.preferredMaxLayoutWidth = textWidth
 
     let bodyLabel = makeLabel(
-        text: body,
+        text: mainBody,
         font: .systemFont(ofSize: 13, weight: .medium),
         color: NSColor(calibratedWhite: 0.95, alpha: 1.0),
-        lines: 5
+        lines: 6
     )
     bodyLabel.preferredMaxLayoutWidth = textWidth
 
-    let stack = NSStackView(views: [titleLabel, bodyLabel])
+    let metaLabel = makeLabel(
+        text: metaBody ?? "",
+        font: .systemFont(ofSize: 11, weight: .regular),
+        color: NSColor(calibratedWhite: 0.72, alpha: 1.0),
+        lines: 3
+    )
+    metaLabel.preferredMaxLayoutWidth = textWidth
+    metaLabel.isHidden = (metaBody == nil)
+
+    let stack = NSStackView(views: [titleLabel, bodyLabel, metaLabel])
     stack.orientation = .vertical
     stack.spacing = 7
     stack.alignment = .leading
@@ -96,7 +127,7 @@ func buildWindow(title: String, body: String, icon: NSImage?) -> NotificationWin
 
     content.layoutSubtreeIfNeeded()
     let textHeight = max(titleLabel.fittingSize.height + bodyLabel.fittingSize.height + stack.spacing, iconSize)
-    let height = max(minHeight, textHeight + padding * 2)
+    let height = min(maxHeight, max(minHeight, textHeight + padding * 2))
 
     let frame = NSRect(x: 0, y: 0, width: width, height: height)
     let window = NotificationWindow(

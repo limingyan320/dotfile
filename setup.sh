@@ -296,6 +296,10 @@ echo ""
 if command -v codex &>/dev/null; then
     info "同步 Codex 原生通知配置..."
     bash "$DOTFILES/codex-notifications/apply.sh" || warn "codex-notifications/apply.sh 有异常退出码，但已尽力处理"
+    if [ "$PLATFORM" = "macos" ]; then
+        info "安装 Codex 本地通知接收器..."
+        bash "$DOTFILES/codex-notifications/install-listener.sh" || warn "Codex listener 安装有异常退出码，但已尽力处理"
+    fi
 else
     warn "codex CLI 未找到，跳过 Codex 通知配置（装好 codex 后重跑 setup.sh）"
 fi

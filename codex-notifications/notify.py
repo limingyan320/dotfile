@@ -6,6 +6,8 @@ import shutil
 import socket
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 from html import escape
 from pathlib import Path
 
@@ -97,6 +99,28 @@ def find_icon():
         if path.is_file():
             return path
     return None
+
+
+def forward_to_local_listener(payload):
+    if os.environ.get("CODEX_NOTIFY_SKIP_FORWARD") == "1":
+        return False
+    if not os.environ.get("SSH_CONNECTION"):
+        return False
+
+    port = os.environ.get("CODEX_NOTIFY_LISTEN_PORT", "47789")
+    url = os.environ.get("CODEX_NOTIFY_FORWARD_URL", f"http://127.0.0.1:{port}/notify")
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=0.4) as resp:
+            return 200 <= resp.status < 300
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return False
 
 
 def notify_macos_popup(title, body, icon_path):
@@ -198,6 +222,9 @@ def main():
         return 0
 
     dump_debug_payload(payload)
+
+    if forward_to_local_listener(payload):
+        return 0
 
     titles = load_titles()
     event_type = str(payload.get("type", "codex"))
