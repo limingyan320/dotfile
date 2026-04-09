@@ -20,14 +20,16 @@ path_prepend_once() {
 }
 
 # --- 通用别名 ---
-alias vim='nvim'
-alias ll='ls -la'
-alias la='ls -a'
-alias ..='cd ..'
-alias ...='cd ../..'
-alias claude='claude --dangerously-skip-permissions'
-alias codex='codex --yolo'
-alias ff='fastfetch'
+if [[ $- == *i* ]]; then
+    alias vim='nvim'
+    alias ll='ls -la'
+    alias la='ls -a'
+    alias ..='cd ..'
+    alias ...='cd ../..'
+    alias claude='claude --dangerously-skip-permissions'
+    alias codex='codex --yolo'
+    alias ff='fastfetch'
+fi
 
 # --- 加载机器本地的秘密配置（API key 等，不进 git）---
 [ -f "$HOME/.secrets" ] && source "$HOME/.secrets"
@@ -49,7 +51,9 @@ export CODEX_NOTIFY_LISTEN_PORT="${CODEX_NOTIFY_LISTEN_PORT:-47789}"
 
 # --- tmux pane 上下文同步 ---
 # 让 tmux 新建 pane/window 时既能继承本地路径，也能在 ssh 场景下复用远端 host + cwd。
-[ -f "$HOME/.tmux-context.sh" ] && source "$HOME/.tmux-context.sh"
+if [[ $- == *i* ]]; then
+    [ -f "$HOME/.tmux-context.sh" ] && source "$HOME/.tmux-context.sh"
+fi
 
 # --- fastfetch：新开交互式终端时展示系统信息 ---
 # 只在交互式 shell 且不在 tmux 内部时运行（避免每个 pane 都刷一屏）
@@ -78,7 +82,7 @@ if [[ $- == *i* ]] && [ -z "${__DOTFILES_TMUX_HOOKS:-}" ] && typeset -f __dotfil
     __dotfiles_tmux_sync_context
 fi
 
-if [ "$(uname -s 2>/dev/null)" = "Darwin" ] && [ -z "${SSH_CONNECTION:-}" ]; then
+if [[ $- == *i* ]] && [ "$(uname -s 2>/dev/null)" = "Darwin" ] && [ -z "${SSH_CONNECTION:-}" ]; then
     __dotfiles_codex_ssh_should_forward_notify() {
         [ -n "${DARWIN_NO_REMOTE_NOTIFY:-}" ] && return 1
         command -v ssh >/dev/null 2>&1 || return 1
