@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ============================================
-# install.sh — 一键安装 dotfiles（创建符号链接）
-# 用法: bash ~/.dotfile/install.sh
+# setup.sh — 一键安装/同步 dotfiles
+# 用法: bash ~/.dotfiles/setup.sh（重跑安全）
 # ============================================
 # 注意：本脚本故意不开 set -e。
 # 软件 / 字体安装可能因网络失败，但符号链接步骤必须能跑完，
@@ -302,6 +302,11 @@ if command -v claude &>/dev/null; then
             warn "claude-notifications-go 安装失败（网络/代理问题），跳过"
         fi
     fi
+
+    # 把 dotfiles/claude-notifications/ 里的自定义音效、图标、标题同步进 config
+    # apply.sh 内部已经宽容处理各种缺失/不合法场景，不会 block 本脚本
+    info "同步自定义通知资源..."
+    bash "$DOTFILES/claude-notifications/apply.sh" || warn "apply.sh 有异常退出码，但已尽力处理"
 else
     warn "claude CLI 未找到，跳过 claude-notifications-go 安装（装好 claude 后重跑 install.sh）"
 fi

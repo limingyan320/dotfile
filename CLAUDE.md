@@ -14,7 +14,8 @@ shell/.zshrc         <- macOS 专用：zsh 补全、插件、conda、macOS 函�
 shell/.bashrc        <- Linux/WSL 专用：bash 补全、PS1 提示符
 nvim/.config/nvim/   <- Neovim 配置，跨平台通用，使用 lazy.nvim 管理插件
 tmux/.tmux.conf      <- tmux 配置，跨平台通用，剪贴板自动检测 (pbcopy/wl-copy/xclip/clip.exe)
-install.sh           <- 一键安装脚本，自动检测包管理器 (brew/rpm-ostree/dnf/apt) 和平台
+claude-notifications/<- claude-notifications-go 插件的自定义资源（音效/图标/标题），apply.sh 合并进 ~/.claude/claude-notifications-go/config.json
+setup.sh             <- 一键安装/同步脚本，自动检测包管理器 (brew/rpm-ostree/dnf/apt) 和平台，重跑安全
 ```
 
 **Shell 配置层级**: `.zshrc` / `.bashrc` -> `source ~/.shared_rc` -> `source ~/.secrets`
@@ -24,9 +25,9 @@ install.sh           <- 一键安装脚本，自动检测包管理器 (brew/rpm-
 ## Key Commands
 
 ```bash
-# 新机器安装
+# 新机器安装（或任意机器重新同步）
 git clone <repo-url> ~/.dotfile
-bash ~/.dotfile/install.sh
+bash ~/.dotfile/setup.sh
 
 # 日常同步（任意一台机器改了配置后）
 cd ~/.dotfile && git add -A && git commit -m "描述" && git push
@@ -37,7 +38,7 @@ cd ~/.dotfile && git pull
 
 ## Platform Differences
 
-- **包管理器**: install.sh 自动检测 brew/rpm-ostree/dnf/apt，找不到则提示手动安装
+- **包管理器**: setup.sh 自动检测 brew/rpm-ostree/dnf/apt，找不到则提示手动安装
 - **剪贴板**: tmux.conf 逐级检测 — macOS (pbcopy)、Wayland (wl-copy)、X11 (xclip)、WSL (clip.exe)
 - **Shell**: macOS 链接 `.zshrc`，Linux/WSL 链接 `.bashrc`，通用配置在 `.shared_rc`
 - **nvim / tmux**: 完全跨平台，不需要区分
@@ -47,8 +48,9 @@ cd ~/.dotfile && git pull
 
 - 通用配置加在 `shell/.shared_rc`，平台专属配置加在对应的 shell 文件
 - nvim 插件通过 lazy.nvim 管理，`lazy-lock.json` 锁定版本需要一起提交
-- 新增配置工具时在 `install.sh` 里添加对应的 `link_file` 调用
-- install.sh 自动检测自身所在目录，不要硬编码 DOTFILES 路径
+- 新增配置工具时在 `setup.sh` 里添加对应的 `link_file` 调用
+- setup.sh 自动检测自身所在目录，不要硬编码 DOTFILES 路径
+- claude-notifications 的自定义资源（音频、icon.png、titles.json）放在 `claude-notifications/`，改完跑 `bash claude-notifications/apply.sh` 即生效；`~/.claude/claude-notifications-go/config.json` 由脚本在本机生成，不进 git
 - 用户询问并确认 nvim/tmux 新用法后，需同步更新 `docs/nvim-tmux-cheatsheet.md`
 
 ## Reference Docs

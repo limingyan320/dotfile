@@ -1,0 +1,9 @@
+{
+  "task_complete":          "(๑•̀ㅂ•́)و✧ 完成力！",
+  "review_complete":        "( ･_･)ﾉ⌐■-■ 看完了",
+  "question":               "(｡•́︿•̀｡) 主人…我有个问题",
+  "plan_ready":             "φ(・ω・ )ﾒﾓﾒﾓ 计划好了",
+  "api_error":              "(×﹏×) 出错了",
+  "api_error_overloaded":   "(；´д｀)ゞ 服务器顶不住",
+  "session_limit_reached":  "(´-ω-`) 额度到顶了"
+}
