@@ -20,6 +20,15 @@ info()  { echo -e "${GREEN}[OK]${NC} $1"; }
 warn()  { echo -e "${YELLOW}[SKIP]${NC} $1"; }
 error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
+has_real_command() {
+    local resolved
+    resolved="$(command -v -- "$1" 2>/dev/null || true)"
+    case "$resolved" in
+        /*) [ -x "$resolved" ] ;;
+        *) return 1 ;;
+    esac
+}
+
 # ============================================
 # 第一步：检测平台
 # ============================================
@@ -293,7 +302,7 @@ echo ""
 echo "--- Codex CLI 通知 ---"
 echo ""
 
-if command -v codex &>/dev/null; then
+if has_real_command codex; then
     info "同步 Codex 原生通知配置..."
     bash "$DOTFILES/codex-notifications/apply.sh" || warn "codex-notifications/apply.sh 有异常退出码，但已尽力处理"
     if [ "$PLATFORM" = "macos" ]; then
@@ -312,7 +321,7 @@ echo ""
 echo "--- Claude Code 插件 ---"
 echo ""
 
-if command -v claude &>/dev/null; then
+if has_real_command claude; then
     CLAUDE_NOTIFY_BIN="$HOME/.claude/plugins/marketplaces/claude-notifications-go/bin/claude-notifications"
     if [ -f "$CLAUDE_NOTIFY_BIN" ]; then
         warn "claude-notifications-go 已安装，跳过"
