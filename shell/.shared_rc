@@ -10,6 +10,14 @@ export EDITOR=nvim
 # --- PATH ---
 # 在这里添加跨平台通用的 PATH
 # export PATH="$HOME/.local/bin:$PATH"
+path_prepend_once() {
+    [ -n "${1:-}" ] || return 0
+    [ -d "$1" ] || return 0
+    case ":$PATH:" in
+        *":$1:"*) ;;
+        *) PATH="$1:$PATH" ;;
+    esac
+}
 
 # --- 通用别名 ---
 alias vim='nvim'
@@ -24,7 +32,19 @@ alias ff='fastfetch'
 # --- 加载机器本地的秘密配置（API key 等，不进 git）---
 [ -f "$HOME/.secrets" ] && source "$HOME/.secrets"
 
-export PATH="$HOME/.local/bin:$PATH"
+path_prepend_once "$HOME/.local/bin"
+
+# --- Node / npm 全局可执行文件 ---
+# 某些机器通过 nvm 安装 codex，实际二进制在 ~/.nvm/versions/node/*/bin 下。
+if [ -d "$HOME/.nvm/versions/node" ]; then
+    for __dotfiles_node_bin in "$HOME"/.nvm/versions/node/*/bin; do
+        [ -d "$__dotfiles_node_bin" ] || continue
+        path_prepend_once "$__dotfiles_node_bin"
+    done
+    unset __dotfiles_node_bin
+fi
+
+export PATH
 export CODEX_NOTIFY_LISTEN_PORT="${CODEX_NOTIFY_LISTEN_PORT:-47789}"
 
 # --- tmux pane 上下文同步 ---
