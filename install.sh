@@ -96,7 +96,7 @@ case "$PKG_MANAGER" in
         info "正在更新软件包列表..."
         sudo apt update || warn "apt update 失败（可能是网络/代理问题），继续尝试安装已缓存的包"
         # neovim 单独处理：jammy 的 apt 仓库版本是 0.6.1，本仓库插件需要 ≥0.9
-        for pkg in tmux git xclip bash-completion fastfetch; do
+        for pkg in tmux git xclip bash-completion; do
             if dpkg -s "$pkg" &>/dev/null; then
                 warn "$pkg 已安装，跳过"
             else
@@ -104,6 +104,32 @@ case "$PKG_MANAGER" in
                 sudo apt install -y "$pkg" || warn "$pkg 安装失败，跳过（可能是网络问题）"
             fi
         done
+        # fastfetch：Ubuntu 24.04+ / Debian 13+ 才进 apt 源，老版本 fallback 到 GitHub .deb
+        if command -v fastfetch &>/dev/null; then
+            warn "fastfetch 已安装，跳过"
+        elif sudo apt install -y fastfetch 2>/dev/null; then
+            info "fastfetch 通过 apt 安装完成"
+        else
+            info "apt 源无 fastfetch，改为下载 GitHub 发行包..."
+            ARCH="$(dpkg --print-architecture 2>/dev/null || uname -m)"
+            case "$ARCH" in
+                amd64|x86_64) FF_ARCH="amd64" ;;
+                arm64|aarch64) FF_ARCH="aarch64" ;;
+                *) FF_ARCH="" ;;
+            esac
+            if [ -z "$FF_ARCH" ]; then
+                warn "不支持的架构 $ARCH，跳过 fastfetch"
+            else
+                TMP_DEB="$(mktemp --suffix=.deb)"
+                FF_URL="https://github.com/fastfetch-cli/fastfetch/releases/latest/download/fastfetch-linux-${FF_ARCH}.deb"
+                if curl -fsSL "$FF_URL" -o "$TMP_DEB" && sudo dpkg -i "$TMP_DEB"; then
+                    info "fastfetch 安装完成"
+                else
+                    warn "fastfetch 下载/安装失败（网络问题），跳过"
+                fi
+                rm -f "$TMP_DEB"
+            fi
+        fi
         # neovim：优先 AppImage，避免 apt 仓库太旧
         if command -v nvim &>/dev/null && nvim --version | head -1 | awk '{print $2}' | grep -qE '^v?(0\.(9|[1-9][0-9])|[1-9])'; then
             warn "neovim $(nvim --version | head -1) 已满足版本要求，跳过"
