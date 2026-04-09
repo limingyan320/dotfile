@@ -288,6 +288,21 @@ fi
 echo ""
 
 # ============================================
+# Codex CLI 通知
+# ============================================
+echo "--- Codex CLI 通知 ---"
+echo ""
+
+if command -v codex &>/dev/null; then
+    info "同步 Codex 原生通知配置..."
+    bash "$DOTFILES/codex-notifications/apply.sh" || warn "codex-notifications/apply.sh 有异常退出码，但已尽力处理"
+else
+    warn "codex CLI 未找到，跳过 Codex 通知配置（装好 codex 后重跑 setup.sh）"
+fi
+
+echo ""
+
+# ============================================
 # Claude Code 插件
 # ============================================
 echo "--- Claude Code 插件 ---"
