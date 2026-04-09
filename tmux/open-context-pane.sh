@@ -32,6 +32,57 @@ quote_sh() {
     printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
 }
 
+ssh_option_takes_value() {
+    case "$1" in
+        -B|-b|-c|-D|-E|-e|-F|-I|-i|-J|-L|-l|-m|-O|-o|-p|-Q|-R|-S|-W|-w)
+            return 0
+            ;;
+    esac
+
+    return 1
+}
+
+extract_ssh_alias_from_command() {
+    set -- $1
+    [ "${1:-}" = "ssh" ] || return 1
+    shift
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --)
+                shift
+                break
+                ;;
+            -*)
+                if ssh_option_takes_value "$1"; then
+                    shift 2
+                else
+                    shift
+                fi
+                ;;
+            *)
+                printf '%s\n' "$1"
+                return 0
+                ;;
+        esac
+    done
+
+    return 1
+}
+
+ssh_alias_from_pane() {
+    pane_pid="$(tmux_fmt '#{pane_pid}')"
+    [ -n "${pane_pid:-}" ] || return 1
+
+    child_pid="$(pgrep -P "$pane_pid" ssh | head -n 1)"
+    [ -n "${child_pid:-}" ] || return 1
+
+    ssh_command="$(ps -o command= -p "$child_pid" 2>/dev/null)"
+    [ -n "${ssh_command:-}" ] || return 1
+
+    extract_ssh_alias_from_command "$ssh_command"
+}
+
 pane_title="$(tmux_fmt '#{pane_title}')"
 local_path="$(tmux_fmt '#{pane_current_path}')"
 session_target="$(tmux_fmt '#{session_id}')"
@@ -69,6 +120,10 @@ case "$pane_title" in
         encoded_path="${rest#"$ssh_target" }"
         if [ -n "$ssh_target" ] && [ -n "$encoded_path" ]; then
             if remote_path="$(decode_base64 "$encoded_path" 2>/dev/null)"; then
+                ssh_alias="$(ssh_alias_from_pane 2>/dev/null || true)"
+                if [ -n "$ssh_alias" ]; then
+                    ssh_target="$ssh_alias"
+                fi
                 remote_cmd="cd $(quote_sh "$remote_path") && exec \${SHELL:-/bin/sh} -l"
                 ssh_cmd="ssh -t $(quote_sh "$ssh_target") $(quote_sh "$remote_cmd")"
                 if [ "$action" = "new-window" ]; then

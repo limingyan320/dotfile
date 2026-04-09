@@ -339,4 +339,6 @@ browser 内（telescope 默认键）：
 
 > 说明：ssh 复用依赖两端 shell 都加载本仓库里的 `shell/.shared_rc`。Linux/WSL 远端还需要 `shell/.bash_profile -> .bashrc` 这条登录链路存在，否则通过 SSH 进入的 login shell 不会加载 tmux 上下文 hook。
 >
+> 若当前 pane 是通过 `ssh <alias>` 连接的，tmux 会优先复用本地 ssh 进程里的 alias，因此 `~/.ssh/config` 中挂在该 alias 上的 ProxyJump、代理、端口、IdentityFile 等配置也会一并保留。
+>
 > 首次启用这套能力后，需要先执行一次 `bash ~/.dotfiles/setup.sh` 创建辅助脚本链接，再在 tmux 里 `tmux source-file ~/.tmux.conf` 重新加载配置。
