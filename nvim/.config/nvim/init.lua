@@ -61,6 +61,11 @@ local function start_file_watcher(bufnr)
     return
   end
 
+  local stat = uv.fs_stat(path)
+  if not stat or stat.type ~= "file" then
+    return
+  end
+
   local watcher = vim.uv.new_fs_event()
   if not watcher then
     return
