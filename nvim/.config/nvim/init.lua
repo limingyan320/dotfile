@@ -33,6 +33,14 @@ if vim.env.SSH_TTY or vim.env.SSH_CONNECTION or vim.env.XDG_SESSION_TYPE == "tty
 end
 vim.opt.autoread = true -- 文件被外部修改时自动重新读取
 
+local function toggle_paste_mode()
+  vim.opt.paste = not vim.opt.paste:get()
+  vim.notify("paste mode: " .. (vim.opt.paste:get() and "on" or "off"))
+end
+
+vim.keymap.set({ "n", "i" }, "<F2>", toggle_paste_mode, { desc = "Toggle paste mode" })
+vim.keymap.set("n", "<leader>vp", toggle_paste_mode, { desc = "Toggle paste mode" })
+
 local external_change_group = vim.api.nvim_create_augroup("DotfilesExternalChanges", { clear = true })
 local file_watchers = {}
 
