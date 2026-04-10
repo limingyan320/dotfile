@@ -113,6 +113,11 @@ new_window() {
     exec tmux new-window -t "$session_target" "$@"
 }
 
+# New windows intentionally stay on the tmux host. Only splits inherit SSH state.
+if [ "$action" = "new-window" ]; then
+    new_window -c "$local_path"
+fi
+
 case "$pane_title" in
     dotctx\ ssh\ *)
         rest="${pane_title#dotctx ssh }"
@@ -126,18 +131,10 @@ case "$pane_title" in
                 fi
                 remote_cmd="cd $(quote_sh "$remote_path") && exec \${SHELL:-/bin/sh} -l"
                 ssh_cmd="ssh -t $(quote_sh "$ssh_target") $(quote_sh "$remote_cmd")"
-                if [ "$action" = "new-window" ]; then
-                    new_window "$ssh_cmd"
-                else
-                    exec tmux split-window "${split_args[@]}" -t "$pane_id" "$ssh_cmd"
-                fi
+                exec tmux split-window "${split_args[@]}" -t "$pane_id" "$ssh_cmd"
             fi
         fi
         ;;
 esac
 
-if [ "$action" = "new-window" ]; then
-    new_window -c "$local_path"
-else
-    exec tmux split-window "${split_args[@]}" -t "$pane_id" -c "$local_path"
-fi
+exec tmux split-window "${split_args[@]}" -t "$pane_id" -c "$local_path"

@@ -290,7 +290,7 @@ browser 内（telescope 默认键）：
 
 | 按键 | 操作 |
 |------|------|
-| `prefix c` | 新建；本地 shell 继承当前路径，ssh shell 复用远端登录并尝试回到远端当前目录 |
+| `prefix c` | 新建；始终在 tmux 所在机器打开，并继承当前 pane 的本地路径，不复用当前 ssh 会话 |
 | `prefix ,` | 重命名 |
 | `prefix n` / `prefix p` | 下/上一个 |
 | `prefix 数字` | 跳到第 N 个 |
@@ -355,7 +355,9 @@ browser 内（telescope 默认键）：
 
 剪贴板自动检测优先级：macOS > Wayland > X11 > WSL
 
-> 说明：ssh 复用依赖两端 shell 都加载本仓库里的 `shell/.shared_rc`。Linux/WSL 远端还需要 `shell/.bash_profile -> .bashrc` 这条登录链路存在，否则通过 SSH 进入的 login shell 不会加载 tmux 上下文 hook。
+> 说明：ssh 复用只作用于 pane split，不作用于 `prefix c` 新建 window。`prefix c` 会回到 tmux 所在机器，并沿用当前 pane 的本地路径。
+>
+> ssh 复用依赖两端 shell 都加载本仓库里的 `shell/.shared_rc`。Linux/WSL 远端还需要 `shell/.bash_profile -> .bashrc` 这条登录链路存在，否则通过 SSH 进入的 login shell 不会加载 tmux 上下文 hook。
 >
 > 若当前 pane 是通过 `ssh <alias>` 连接的，tmux 会优先复用本地 ssh 进程里的 alias，因此 `~/.ssh/config` 中挂在该 alias 上的 ProxyJump、代理、端口、IdentityFile 等配置也会一并保留。
 >

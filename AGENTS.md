@@ -63,4 +63,4 @@ cd ~/.dotfile && git pull
 
 - 当用户询问 nvim/tmux 快捷键、窗口管理、搜索跳转等操作问题时，先读取 `docs/nvim-tmux-cheatsheet.md`
 - 该文档应保持与仓库当前实际配置一致
-- 当前有一个待解决的 tmux 需求：在本地路径继承基础上，进一步实现 SSH pane/window 的上下文继承。接手前先读 `docs/tmux-ssh-inheritance.md`
+- 涉及 tmux 本地路径继承或 SSH 上下文继承的改动时，先读取 `docs/tmux-ssh-inheritance.md`
