@@ -33,6 +33,52 @@ if vim.env.SSH_TTY or vim.env.SSH_CONNECTION or vim.env.XDG_SESSION_TYPE == "tty
 end
 vim.opt.autoread = true -- 文件被外部修改时自动重新读取
 
+local external_change_group = vim.api.nvim_create_augroup("DotfilesExternalChanges", { clear = true })
+local file_watchers = {}
+
+local function stop_file_watcher(bufnr)
+  local watcher = file_watchers[bufnr]
+  if watcher then
+    watcher:stop()
+    watcher:close()
+    file_watchers[bufnr] = nil
+  end
+end
+
+local function start_file_watcher(bufnr)
+  stop_file_watcher(bufnr)
+
+  local path = vim.api.nvim_buf_get_name(bufnr)
+  if path == "" or vim.bo[bufnr].buftype ~= "" or vim.fn.isdirectory(path) == 1 then
+    return
+  end
+
+  local watcher = vim.uv.new_fs_event()
+  if not watcher then
+    return
+  end
+
+  local ok, err = watcher:start(path, {}, vim.schedule_wrap(function(fs_err)
+    if fs_err or not vim.api.nvim_buf_is_valid(bufnr) then
+      stop_file_watcher(bufnr)
+      return
+    end
+    if vim.bo[bufnr].modified then
+      return
+    end
+    vim.cmd(("silent! checktime %d"):format(bufnr))
+  end))
+  if not ok then
+    watcher:close()
+    vim.schedule(function()
+      vim.notify("文件监听启动失败: " .. tostring(err), vim.log.levels.DEBUG)
+    end)
+    return
+  end
+
+  file_watchers[bufnr] = watcher
+end
+
 -- 用 oil.nvim 替代 netrw 做文件浏览，禁用内置 netrw 以免冲突
 vim.g.loaded_netrw = 1
 vim.g.loaded_netrwPlugin = 1
@@ -53,15 +99,29 @@ end, { desc = "Yank current buffer abs path" })
 -- Claude/外部工具改文件后 nvim 不会自动发现。这里在光标停顿、进入 buffer、
 -- 终端获得焦点时主动调用 checktime，并在文件被外部改动后给出提示。
 vim.api.nvim_create_autocmd({ "FocusGained", "BufEnter", "CursorHold", "CursorHoldI", "TermLeave" }, {
+  group = external_change_group,
   callback = function()
     if vim.fn.mode() ~= "c" and vim.fn.getcmdwintype() == "" then
-      vim.cmd("checktime")
+      vim.cmd("silent! checktime")
     end
   end,
 })
 vim.api.nvim_create_autocmd("FileChangedShellPost", {
+  group = external_change_group,
   callback = function()
     vim.notify("文件被外部修改，已重新加载", vim.log.levels.WARN)
+  end,
+})
+vim.api.nvim_create_autocmd({ "BufReadPost", "BufFilePost", "BufWritePost" }, {
+  group = external_change_group,
+  callback = function(args)
+    start_file_watcher(args.buf)
+  end,
+})
+vim.api.nvim_create_autocmd({ "BufDelete", "BufUnload", "BufWipeout" }, {
+  group = external_change_group,
+  callback = function(args)
+    stop_file_watcher(args.buf)
   end,
 })
 -- 缩短 CursorHold 触发间隔（默认 4000ms），让外部改动几乎即时可见
@@ -100,6 +160,7 @@ require("lazy").setup({
     },
     opts = {
       default_file_explorer = true,
+      watch_for_changes = true,
       view_options = {
         show_hidden = true,
       },
