@@ -35,13 +35,18 @@ if [ -z "${CONDA_EXE:-}" ]; then
         __conda_setup="$("$__dotfiles_conda_root/bin/conda" 'shell.bash' 'hook' 2> /dev/null)"
         if [ $? -eq 0 ]; then
             eval "$__conda_setup"
-        elif [ -f "$__dotfiles_conda_root/etc/profile.d/conda.sh" ]; then
-            . "$__dotfiles_conda_root/etc/profile.d/conda.sh"
         else
-            case ":$PATH:" in
-                *":$__dotfiles_conda_root/bin:"*) ;;
-                *) export PATH="$__dotfiles_conda_root/bin:$PATH" ;;
-            esac
+            __dotfiles_conda_sh="$__dotfiles_conda_root/etc/profile.d/conda.sh"
+            # Keep the fallback path in a variable so `conda init` does not rewrite it.
+            if [ -f "$__dotfiles_conda_sh" ]; then
+                . "$__dotfiles_conda_sh"
+            else
+                case ":$PATH:" in
+                    *":$__dotfiles_conda_root/bin:"*) ;;
+                    *) export PATH="$__dotfiles_conda_root/bin:$PATH" ;;
+                esac
+            fi
+            unset __dotfiles_conda_sh
         fi
         unset __conda_setup
     fi
