@@ -21,6 +21,7 @@ if [[ $- == *i* ]]; then
     alias claude='claude --dangerously-skip-permissions'
     alias codex='codex --yolo'
     alias ff='fastfetch'
+    alias g='nvitop'
 fi
 
 # --- 加载机器本地的秘密配置（API key 等，不进 git）---
