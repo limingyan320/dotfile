@@ -30,6 +30,34 @@ skip()  { echo -e "${YELLOW}[SKIP]${NC} $1"; }
 err()   { echo -e "${RED}[ERR]${NC} $1"; }
 head()  { echo -e "${CYAN}==${NC} $1"; }
 
+find_toml_python() {
+    local candidate
+    for candidate in \
+        python3 \
+        python3.14 \
+        python3.13 \
+        python3.12 \
+        python3.11 \
+        python \
+        /opt/homebrew/bin/python3 \
+        /usr/local/bin/python3
+    do
+        if [ -x "$candidate" ]; then
+            :
+        else
+            command -v "$candidate" >/dev/null 2>&1 || continue
+        fi
+        if "$candidate" - <<'PY' >/dev/null 2>&1
+import tomllib
+PY
+        then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
 head "codex-notifications apply"
 echo "  source: $HERE"
 echo "  target: $CONFIG_PATH"
@@ -45,13 +73,19 @@ if [ ! -f "$NOTIFY_SCRIPT" ]; then
     exit 0
 fi
 
+TOML_PYTHON="$(find_toml_python)"
+if [ -z "$TOML_PYTHON" ]; then
+    err "需要一个支持 tomllib 的 Python（>= 3.11）来更新 config.toml，跳过"
+    exit 0
+fi
+
 if [ ! -f "$TITLES_FILE" ]; then
     skip "titles.json 不存在，将由 notify.py 使用内置标题"
 fi
 
 mkdir -p "$CONFIG_DIR"
 
-python3 - "$CONFIG_PATH" "$NOTIFY_SCRIPT" <<'PY'
+"$TOML_PYTHON" - "$CONFIG_PATH" "$NOTIFY_SCRIPT" <<'PY'
 import copy
 import json
 import math
