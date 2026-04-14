@@ -277,6 +277,8 @@ link_file "$DOTFILES/tmux/.tmux-context.sh"      "$HOME/.tmux-context.sh"
 link_file "$DOTFILES/tmux/open-context-pane.sh"  "$HOME/.tmux-open-context-pane.sh"
 link_file "$DOTFILES/starship/starship.toml"     "$HOME/.config/starship.toml"
 link_file "$DOTFILES/fastfetch/config.jsonc"     "$HOME/.config/fastfetch/config.jsonc"
+link_file "$DOTFILES/fastfetch/logos"            "$HOME/.config/fastfetch/logos"
+link_file "$DOTFILES/fastfetch/presets"          "$HOME/.config/fastfetch/presets"
 link_file "$DOTFILES/claude-skills/nvim-quickref" "$HOME/.claude/skills/nvim-quickref"
 for skill_dir in "$DOTFILES"/skills/*; do
     [ -d "$skill_dir" ] || continue

@@ -21,8 +21,46 @@ if [[ $- == *i* ]]; then
     alias ...='cd ../..'
     alias claude='claude --dangerously-skip-permissions'
     alias codex='codex --yolo'
-    alias ff='fastfetch'
     alias g='nvitop'
+
+    ff() {
+        local system
+        system="$(uname -s 2>/dev/null)"
+
+        if [ "$system" = "Darwin" ]; then
+            local macos_preset="$HOME/.config/fastfetch/presets/macos-rei31.jsonc"
+            if [ -f "$macos_preset" ]; then
+                command fastfetch --config "$macos_preset" "$@"
+                return
+            fi
+        elif [ "$system" = "Linux" ] && [ -r /etc/os-release ]; then
+            local os_id
+            os_id="$(
+                . /etc/os-release
+                printf '%s' "${ID:-}"
+            )"
+
+            if [ "$os_id" = "ubuntu" ]; then
+                local ubuntu_preset="$HOME/.config/fastfetch/presets/ubuntu-sharingan.jsonc"
+                local ubuntu_logo="$HOME/.config/fastfetch/logos/ubuntu_sharingan_eye.ffraw.txt"
+                if [ -f "$ubuntu_preset" ] && [ -f "$ubuntu_logo" ]; then
+                    command fastfetch --config "$ubuntu_preset" --logo-type file-raw --logo "$ubuntu_logo" --logo-padding-right 2 "$@"
+                    return
+                fi
+            fi
+        fi
+
+        command fastfetch "$@"
+    }
+
+    fffinger() {
+        local logo_path="$HOME/.config/fastfetch/logos/ss_finger.ffraw.txt"
+        if [ -f "$logo_path" ]; then
+            command fastfetch --logo-type file-raw --logo "$logo_path" --logo-padding-right 2 "$@"
+        else
+            ff "$@"
+        fi
+    }
 fi
 
 # --- 加载机器本地的秘密配置（API key 等，不进 git）---
@@ -226,7 +264,7 @@ fi
 # --- fastfetch：新开交互式终端时展示系统信息 ---
 # 只在交互式 shell 且不在 tmux 内部时运行（避免每个 pane 都刷一屏）
 if [[ $- == *i* ]] && [ -z "$TMUX" ] && command -v fastfetch &>/dev/null; then
-    fastfetch
+    ff
 fi
 
 # --- Starship prompt ---
