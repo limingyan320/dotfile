@@ -277,6 +277,7 @@ link_file "$DOTFILES/tmux/.tmux-context.sh"      "$HOME/.tmux-context.sh"
 link_file "$DOTFILES/tmux/open-context-pane.sh"  "$HOME/.tmux-open-context-pane.sh"
 link_file "$DOTFILES/starship/starship.toml"     "$HOME/.config/starship.toml"
 link_file "$DOTFILES/fastfetch/config.jsonc"     "$HOME/.config/fastfetch/config.jsonc"
+link_file "$DOTFILES/claude-skills/nvim-quickref" "$HOME/.claude/skills/nvim-quickref"
 
 # --- 平台专属链接 ---
 if [ "$PLATFORM" = "macos" ]; then
