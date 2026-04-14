@@ -19,6 +19,8 @@ nvim/.config/nvim/   <- Neovim 配置，跨平台通用，使用 lazy.nvim 管�
 tmux/.tmux.conf      <- tmux 配置，跨平台通用，剪贴板自动检测 (pbcopy/wl-copy/xclip/clip.exe)
 codex-notifications/ <- Codex 原生 notify 配置；macOS 使用仓库内 Swift 自定义弹窗，并由 setup.sh 安装本地 listener 以接收 SSH 远端回传；其他平台走系统通知；apply.sh 合并进 ~/.codex/config.toml
 claude-notifications/<- claude-notifications-go 插件的自定义资源（音效/图标/标题），apply.sh 合并进 ~/.claude/claude-notifications-go/config.json
+claude-skills/       <- Claude Code 用户级 skill（如 nvim-quickref），setup.sh 把每个子目录链到 ~/.claude/skills/
+skills/              <- 非 Claude agent 复用的共享 skill；setup.sh 把每个子目录链到 ~/.codex/skills/
 setup.sh             <- 一键安装/同步脚本，自动检测包管理器 (brew/rpm-ostree/dnf/apt) 和平台，重跑安全
 ```
 
@@ -34,7 +36,10 @@ setup.sh             <- 一键安装/同步脚本，自动检测包管理器 (br
 - nvim 插件通过 lazy.nvim 管理；插件变更若影响锁定版本，需要同步提交 `nvim/.config/nvim/lazy-lock.json`
 - `codex-notifications/` 只存放仓库内通知脚本、标题映射和 macOS listener/popup；`~/.codex/config.toml` 与 `~/Library/LaunchAgents/com.lumynous.codex-notify-listener.plist` 由脚本在本机生成，不直接进 git
 - `claude-notifications/` 只存放仓库内资源；`~/.claude/claude-notifications-go/config.json` 由脚本在本机生成，不进 git
+- `claude-skills/` 只存放 Claude 专用 skill；`setup.sh` 负责把每个子目录链接到 `~/.claude/skills/`
+- `skills/` 只存放非 Claude agent 复用的共享 skill；`setup.sh` 负责把每个子目录链接到 `~/.codex/skills/`
 - 任何涉及 nvim/tmux 使用方式的确认性变更，都要同步更新 `docs/nvim-tmux-cheatsheet.md`
+- nvim `init.lua` 改动后，同步更新 `claude-skills/nvim-quickref/SKILL.md`、`skills/nvim-quickref/SKILL.md` 和 `docs/nvim-tmux-cheatsheet.md`
 - 修改仓库约定时，优先同时更新本文件和 `CLAUDE.md`，避免项目文档分叉
 
 ## Key Commands
