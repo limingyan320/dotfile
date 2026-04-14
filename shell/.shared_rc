@@ -23,16 +23,13 @@ if [[ $- == *i* ]]; then
     alias codex='codex --yolo'
     alias g='nvitop'
 
-    ff() {
+    __dotfiles_fastfetch_default_profile() {
         local system
         system="$(uname -s 2>/dev/null)"
 
         if [ "$system" = "Darwin" ]; then
-            local macos_preset="$HOME/.config/fastfetch/presets/macos-rei31.jsonc"
-            if [ -f "$macos_preset" ]; then
-                command fastfetch --config "$macos_preset" "$@"
-                return
-            fi
+            printf '%s\n' "macos-rei31"
+            return 0
         elif [ "$system" = "Linux" ] && [ -r /etc/os-release ]; then
             local os_id
             os_id="$(
@@ -41,25 +38,89 @@ if [[ $- == *i* ]]; then
             )"
 
             if [ "$os_id" = "ubuntu" ]; then
-                local ubuntu_preset="$HOME/.config/fastfetch/presets/ubuntu-sharingan.jsonc"
-                local ubuntu_logo="$HOME/.config/fastfetch/logos/ubuntu_sharingan_eye.ffraw.txt"
-                if [ -f "$ubuntu_preset" ] && [ -f "$ubuntu_logo" ]; then
-                    command fastfetch --config "$ubuntu_preset" --logo-type file-raw --logo "$ubuntu_logo" --logo-padding-right 2 "$@"
-                    return
-                fi
+                printf '%s\n' "ubuntu-sharingan"
+                return 0
             fi
         fi
+
+        printf '%s\n' "plain"
+    }
+
+    __dotfiles_fastfetch_profile() {
+        if [ -n "${DOTFILES_FASTFETCH_PROFILE:-}" ]; then
+            printf '%s\n' "$DOTFILES_FASTFETCH_PROFILE"
+            return 0
+        fi
+
+        __dotfiles_fastfetch_default_profile
+    }
+
+    __dotfiles_fastfetch_run() {
+        local profile preset logo
+
+        if [ -n "${DOTFILES_FASTFETCH_CONFIG:-}" ] && [ -f "${DOTFILES_FASTFETCH_CONFIG:-}" ]; then
+            if [ -n "${DOTFILES_FASTFETCH_LOGO:-}" ] && [ -f "${DOTFILES_FASTFETCH_LOGO:-}" ]; then
+                command fastfetch \
+                    --config "$DOTFILES_FASTFETCH_CONFIG" \
+                    --logo-type "${DOTFILES_FASTFETCH_LOGO_TYPE:-file-raw}" \
+                    --logo "$DOTFILES_FASTFETCH_LOGO" \
+                    --logo-padding-right "${DOTFILES_FASTFETCH_LOGO_PADDING_RIGHT:-2}" \
+                    "$@"
+                return
+            fi
+
+            command fastfetch --config "$DOTFILES_FASTFETCH_CONFIG" "$@"
+            return
+        fi
+
+        profile="$(__dotfiles_fastfetch_profile)"
+
+        case "$profile" in
+            macos-rei|macos-rei31|rei|rei31)
+                preset="$HOME/.config/fastfetch/presets/macos-rei31.jsonc"
+                if [ -f "$preset" ]; then
+                    command fastfetch --config "$preset" "$@"
+                    return
+                fi
+                ;;
+            ubuntu-sharingan|ubuntu|sharingan)
+                preset="$HOME/.config/fastfetch/presets/ubuntu-sharingan.jsonc"
+                logo="$HOME/.config/fastfetch/logos/ubuntu_sharingan_eye.ffraw.txt"
+                if [ -f "$preset" ] && [ -f "$logo" ]; then
+                    command fastfetch --config "$preset" --logo-type file-raw --logo "$logo" --logo-padding-right 2 "$@"
+                    return
+                fi
+                ;;
+            finger|ss-finger|middle-finger)
+                logo="$HOME/.config/fastfetch/logos/ss_finger.ffraw.txt"
+                if [ -f "$logo" ]; then
+                    command fastfetch --logo-type file-raw --logo "$logo" --logo-padding-right 2 "$@"
+                    return
+                fi
+                ;;
+            plain|default|none)
+                ;;
+            *)
+                if [ -f "$profile" ]; then
+                    command fastfetch --config "$profile" "$@"
+                    return
+                fi
+                ;;
+        esac
 
         command fastfetch "$@"
     }
 
+    ff() {
+        __dotfiles_fastfetch_run "$@"
+    }
+
     fffinger() {
-        local logo_path="$HOME/.config/fastfetch/logos/ss_finger.ffraw.txt"
-        if [ -f "$logo_path" ]; then
-            command fastfetch --logo-type file-raw --logo "$logo_path" --logo-padding-right 2 "$@"
-        else
-            ff "$@"
-        fi
+        DOTFILES_FASTFETCH_PROFILE="finger" __dotfiles_fastfetch_run "$@"
+    }
+
+    ffprofiles() {
+        printf '%s\n' "macos-rei31" "ubuntu-sharingan" "finger" "plain"
     }
 fi
 
