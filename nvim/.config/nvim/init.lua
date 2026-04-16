@@ -141,6 +141,24 @@ vim.api.nvim_create_autocmd({ "BufDelete", "BufUnload", "BufWipeout" }, {
 vim.opt.updatetime = 500
 
 vim.g.mapleader = " "
+vim.keymap.set("n", "<leader>t", function()
+  local buf_name = vim.api.nvim_buf_get_name(0)
+  local dir
+
+  if buf_name:match("^oil://") then
+    dir = buf_name:gsub("^oil://", "")
+  elseif buf_name ~= "" then
+    dir = vim.fn.fnamemodify(buf_name,":p:h")
+  end
+  
+  if not dir or vim.fn.isdirectory(dir) == 0 then
+    dir = vim.fn.getcwd()
+  end
+  vim.cmd("enew")
+  vim.fn.termopen(vim.o.shell,{ cwd = dir })
+end, { desc = "Terminal in current file dir"})
+
+
 vim.opt.termguicolors = true
 
 -- 缩进后保持选中
