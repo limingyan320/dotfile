@@ -175,10 +175,10 @@ vim.keymap.set("v", "{", "sa{", { remap = true })
 vim.keymap.set("v", "'", "sa'", { remap = true })
 vim.keymap.set("v", '"', 'sa"', { remap = true })
 vim.keymap.set("v", "`", "sa`", { remap = true })
-vim.keymap.set("x", "#", function()
-  require("Comment.api").toggle.linewise(vim.fn.visualmode())
-end, { desc = "Toggle comment for selection" })
-
+vim.keymap.set("x", "#", "<Plug>(comment_toggle_linewise_visual)",{
+  desc = "Toggle comment for selection",
+  remap = true,
+})
 
 require("lazy").setup({
   -- 文件浏览（替代 netrw）：把目录当 buffer 编辑，按 - 回到父目录
