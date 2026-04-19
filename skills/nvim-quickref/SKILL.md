@@ -12,6 +12,8 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 ## 选项 & 行为
 
 - `number` + `relativenumber` + `termguicolors`
+- 默认缩进：`expandtab = true`，`tabstop = 2`，`shiftwidth = 2`，`softtabstop = 2`（2-space soft tabs）
+- Swift 例外：运行时 `ftplugin/swift.vim` 会把 `shiftwidth` / `softtabstop` 设为 4；当前配置额外修正了在 `{}` / `[]` / `()` 中间按 `<CR>` 时的错位缩进
 - `clipboard = unnamedplus`；检测到 `$SSH_TTY` / `$SSH_CONNECTION` / `$XDG_SESSION_TYPE=tty` 时自动切到 **OSC 52**（走终端剪贴板，需要 iTerm2/WezTerm/kitty 等允许剪贴板访问，tmux 需 `set-clipboard on`）
 - `autoread` + `updatetime = 500`（缩短 `CursorHold` 触发间隔让外部改动近实时可见）
 - 外部改动侦测：`FocusGained` / `BufEnter` / `CursorHold{,I}` / `TermLeave` 主动 `checktime`；每个文件 buffer 还会跑一个 `uv.new_fs_event` watcher，被外部改动后弹 WARN `文件被外部修改，已重新加载`
@@ -24,6 +26,7 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 | n/i | `<F2>` | toggle paste mode |
 | n | `<leader>vp` | toggle paste mode |
 | n | `<leader>yp` | 复制当前 buffer 绝对路径到 `+` 和 `"` |
+| n/x/i | `<M-h>` / `<M-l>` | 左移 / 右移当前行或选区缩进 |
 | n/v | `H` | `^`（行首非空） |
 | n/v | `L` | `$`（行尾） |
 | v | `<` / `>` | 缩进并保持选区（`<gv` / `>gv`） |
@@ -119,10 +122,12 @@ LSP 键位：
 
 ### `saghen/blink.cmp` — 补全
 - `version = '*'`，依赖 `rafamadriz/friendly-snippets`
-- `keymap = { preset = 'default' }`:
+- `keymap = { preset = 'enter' }`（更接近 IDE）:
   - `<C-space>` 触发补全
-  - `<CR>` 确认
-  - `<Tab>` / `<S-Tab>` 上下切换
+  - `<Up>` / `<Down>` 或 `<C-p>` / `<C-n>` 上下选择
+  - `<CR>` 确认当前补全项
+  - `<C-e>` 关闭补全菜单
+  - `<Tab>` / `<S-Tab>` 只用于 snippet 前进 / 后退
 - `sources.default = { lsp, path, snippets, buffer }`
 - `appearance = { use_nvim_cmp_as_default = true, nerd_font_variant = 'mono' }`
 

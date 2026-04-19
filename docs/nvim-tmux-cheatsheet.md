@@ -7,6 +7,8 @@
 # Neovim
 
 > Leader 键 = `空格`
+> 默认缩进 = 2 个空格（`expandtab` + `tabstop/shiftwidth/softtabstop = 2`）
+> Swift 例外 = 跟随运行时 ftplugin 用 4 空格；在 `{}` / `[]` / `()` 中间按 `Enter` 时会自动保持闭括号和起始行对齐
 
 ## 窗口（Split）管理
 
@@ -145,6 +147,7 @@ browser 内（telescope 默认键）：
 | `Ctrl+P` | 搜文件名（基于当前文件的 git 根目录，默认隐藏 .git/node_modules 等） |
 | `Space fg` | 全局内容搜索（同样以 git 根为范围） |
 | `Space fb` | 搜已打开 buffer |
+| Telescope 内 `Alt+V` / `Alt+S` | 把选中的文件左右 / 上下分屏打开 |
 | Telescope 内 `Ctrl+H` | 切换：显示隐藏文件 + 忽略 .gitignore（保留已输入内容） |
 | Telescope 内 `Ctrl+J/K` | 上下移动 |
 | Telescope 内 `Ctrl+U/D` | 预览窗口翻页 |
@@ -175,6 +178,10 @@ browser 内（telescope 默认键）：
 | `Space rn` | 重命名符号 |
 | `Space ca` | 代码操作 |
 | `[d` / `]d` | 上/下一个诊断 |
+| `:lua vim.diagnostic.open_float()` | 弹出当前光标位置的报错详情 |
+| `:lua vim.diagnostic.setloclist()` + `:lopen` | 打开当前文件的诊断列表 |
+
+> 当前配置没有单独绑定“显示当前诊断详情”的快捷键，所以看错误原因时用上面的命令最直接。
 
 ### 跳转历史（重要）
 
@@ -187,6 +194,21 @@ browser 内（telescope 默认键）：
 
 ---
 
+## 补全
+
+当前使用 `blink.cmp`，按键改成更接近 IDE：
+
+| 按键 | 操作 |
+|------|------|
+| `Ctrl+Space` | 手动触发补全 |
+| `Up` / `Down` | 上下选择补全项 |
+| `Ctrl+P` / `Ctrl+N` | 上下选择补全项 |
+| `Enter` | 确认当前补全项 |
+| `Ctrl+E` | 关闭补全菜单 |
+| `Tab` / `Shift+Tab` | 仅用于 snippet 前进 / 后退，不用来选补全项 |
+
+---
+
 ## 文本编辑
 
 ### 核心动作
@@ -195,7 +217,9 @@ browser 内（telescope 默认键）：
 |------|------|------|
 | `ciw` | 删词并编辑 | change in word |
 | `ci"` / `ci(` / `ci{` | 删引号/括号内容并编辑 | change in ... |
+| `d{motion}` | 删除到某个移动范围，不进入插入模式 | delete + motion |
 | `diw` | 删词 | delete in word |
+| `dw` / `d$` | 删到下一个词前 / 删到行尾 | |
 | `viw` / `vi{` | 选词 / 选大括号内 | visual in ... |
 | `yiw` | 复制词 | yank in word |
 | `dd` / `yy` | 删整行 / 复制整行 | |
@@ -206,6 +230,16 @@ browser 内（telescope 默认键）：
 | `.` | **重复上一次操作** | |
 | `<` / `>` (Visual) | 缩进并保持选中（自定义配置） | |
 | `#` (Visual) | 按当前文件类型切换所选多行注释（自定义配置） | |
+
+> `d` 本身不是一种模式。按下后 Vim 会等待后续动作，所以看起来像“进入了什么状态”，其实是在等你补一个 motion，比如 `w`、`$`、`d`。
+
+### 缩进调整
+
+| 按键 | 操作 |
+|------|------|
+| `Alt+L` | 当前行 / 选区右移一级缩进（Normal / Visual / Insert 都可） |
+| `Alt+H` | 当前行 / 选区左移一级缩进（Normal / Visual / Insert 都可） |
+| `<` / `>` (Visual) | 原生左移 / 右移，并保持选区 |
 
 ### 粘贴代码不乱缩进
 

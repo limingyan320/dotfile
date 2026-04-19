@@ -14,6 +14,100 @@ vim.opt.rtp:prepend(lazypath)
 vim.opt.number = true
 vim.opt.relativenumber = true
 vim.opt.clipboard = "unnamedplus"
+-- 统一用 2-space soft tabs，避免新行缩进看起来像硬 Tab 那样过宽
+vim.opt.expandtab = true
+vim.opt.tabstop = 2
+vim.opt.shiftwidth = 2
+vim.opt.softtabstop = 2
+
+local function indent_step(bufnr)
+  local sw = vim.bo[bufnr].shiftwidth
+  if sw == 0 then
+    return vim.bo[bufnr].tabstop
+  end
+  return sw
+end
+
+local function indent_text(width, bufnr)
+  if width <= 0 then
+    return ""
+  end
+
+  if vim.bo[bufnr].expandtab then
+    return string.rep(" ", width)
+  end
+
+  local ts = vim.bo[bufnr].tabstop
+  local tabs = math.floor(width / ts)
+  local spaces = width % ts
+  return string.rep("\t", tabs) .. string.rep(" ", spaces)
+end
+
+local function shift_current_line(delta)
+  local bufnr = vim.api.nvim_get_current_buf()
+  local row, col = unpack(vim.api.nvim_win_get_cursor(0))
+  local line = vim.api.nvim_get_current_line()
+  local leading = line:match("^%s*") or ""
+  local content = line:sub(#leading + 1)
+  local current_width = vim.fn.indent(row)
+  local new_width = math.max(0, current_width + delta * indent_step(bufnr))
+  local new_indent = indent_text(new_width, bufnr)
+
+  vim.api.nvim_set_current_line(new_indent .. content)
+  local new_col = math.max(0, col + (#new_indent - #leading))
+  vim.api.nvim_win_set_cursor(0, { row, new_col })
+end
+
+local function swift_block_enter()
+  local bufnr = vim.api.nvim_get_current_buf()
+  local row, col = unpack(vim.api.nvim_win_get_cursor(0))
+  local line = vim.api.nvim_get_current_line()
+  local left = col > 0 and line:sub(col, col) or ""
+  local right = line:sub(col + 1, col + 1)
+  local pairs = { ["{"] = "}", ["["] = "]", ["("] = ")" }
+
+  if pairs[left] ~= right then
+    return nil
+  end
+
+  local before = line:sub(1, col)
+  local after = line:sub(col + 1)
+  local base_width = vim.fn.indent(row)
+  local base_indent = indent_text(base_width, bufnr)
+  local inner_indent = indent_text(base_width + indent_step(bufnr), bufnr)
+
+  vim.api.nvim_buf_set_lines(bufnr, row - 1, row, false, {
+    before,
+    inner_indent,
+    base_indent .. after,
+  })
+  vim.api.nvim_win_set_cursor(0, { row + 1, #inner_indent })
+  vim.schedule(function()
+    vim.cmd("startinsert")
+  end)
+
+  return true
+end
+
+local function smart_enter()
+  local ok, cmp = pcall(require, "blink.cmp")
+  if ok then
+    local visible_ok, visible = pcall(cmp.is_visible)
+    if visible_ok and visible then
+      cmp.accept()
+      return
+    end
+  end
+
+  if vim.bo.filetype == "swift" then
+    if swift_block_enter() then
+      return
+    end
+  end
+
+  local cr = vim.api.nvim_replace_termcodes("<CR>", true, false, true)
+  vim.api.nvim_feedkeys(cr, "n", false)
+end
 
 -- SSH / 纯 tty 环境下没有 $DISPLAY，xclip/wl-copy 都失效，
 -- 改用 OSC 52 让终端（iTerm2/WezTerm/kitty 等）把内容写到本地剪贴板。
@@ -164,6 +258,22 @@ vim.opt.termguicolors = true
 -- 缩进后保持选中
 vim.keymap.set("v", "<", "<gv")
 vim.keymap.set("v", ">", ">gv")
+vim.keymap.set("n", "<M-h>", "<<", { desc = "Indent left" })
+vim.keymap.set("n", "<M-l>", ">>", { desc = "Indent right" })
+vim.keymap.set("x", "<M-h>", "<gv", { desc = "Indent left" })
+vim.keymap.set("x", "<M-l>", ">gv", { desc = "Indent right" })
+vim.keymap.set("i", "<M-h>", function()
+  shift_current_line(-1)
+  vim.schedule(function()
+    vim.cmd("startinsert")
+  end)
+end, { desc = "Indent left" })
+vim.keymap.set("i", "<M-l>", function()
+  shift_current_line(1)
+  vim.schedule(function()
+    vim.cmd("startinsert")
+  end)
+end, { desc = "Indent right" })
 
 -- H/L 快速跳转行首行尾（原始 0/$ 仍可用）
 vim.keymap.set({ "n", "v" }, "H", "^")
@@ -178,6 +288,15 @@ vim.keymap.set("v", "`", "sa`", { remap = true })
 vim.keymap.set("x", "#", "<Plug>(comment_toggle_linewise_visual)",{
   desc = "Toggle comment for selection",
   remap = true,
+})
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = "swift",
+  callback = function(args)
+    vim.keymap.set("i", "<CR>", smart_enter, {
+      buffer = args.buf,
+      desc = "Swift smart enter",
+    })
+  end,
 })
 
 require("lazy").setup({
@@ -418,11 +537,12 @@ require("lazy").setup({
     dependencies = 'rafamadriz/friendly-snippets', -- 可选：提供基础的补全代码片段
     version = '*', -- 使用最新的发布版本
     opts = {
-      -- 默认按键设置：
+      -- IDE 风格补全：
       -- <C-space> 触发补全
-      -- <Enter> 确认选择
-      -- <Tab> / <S-Tab> 上下切换
-      keymap = { preset = 'default' },
+      -- <Up>/<Down> 或 <C-n>/<C-p> 选择候选项
+      -- <Enter> 确认补全
+      -- <Tab> / <S-Tab> 仅用于 snippet 跳转
+      keymap = { preset = 'enter' },
       appearance = {
         use_nvim_cmp_as_default = true, -- 让它的外观模仿经典的 nvim-cmp
         nerd_font_variant = 'mono'
