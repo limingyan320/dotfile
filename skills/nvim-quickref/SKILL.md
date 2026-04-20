@@ -125,9 +125,10 @@ LSP 键位：
 - `keymap = { preset = 'enter' }`（更接近 IDE）:
   - `<C-space>` 触发补全
   - `<Up>` / `<Down>` 或 `<C-p>` / `<C-n>` 上下选择
-  - `<CR>` 确认当前补全项
+  - `<CR>` 只在**你已经选中候选项**时确认补全；否则正常换行
   - `<C-e>` 关闭补全菜单
   - `<Tab>` / `<S-Tab>` 只用于 snippet 前进 / 后退
+- `completion.list.selection = { preselect = false, auto_insert = false }`：不默认预选第一项，避免回车误补全
 - `sources.default = { lsp, path, snippets, buffer }`
 - `appearance = { use_nvim_cmp_as_default = true, nerd_font_variant = 'mono' }`
 

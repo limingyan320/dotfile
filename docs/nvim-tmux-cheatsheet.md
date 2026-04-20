@@ -203,9 +203,11 @@ browser 内（telescope 默认键）：
 | `Ctrl+Space` | 手动触发补全 |
 | `Up` / `Down` | 上下选择补全项 |
 | `Ctrl+P` / `Ctrl+N` | 上下选择补全项 |
-| `Enter` | 确认当前补全项 |
+| `Enter` | 只在已选中候选项时确认补全；否则正常换行 |
 | `Ctrl+E` | 关闭补全菜单 |
 | `Tab` / `Shift+Tab` | 仅用于 snippet 前进 / 后退，不用来选补全项 |
+
+> 当前配置不默认预选第一项，所以像输入 `str` 时，按 `Enter` 不会擅自补成 `start`；要先用方向键显式选中再回车确认。
 
 ---
 

@@ -94,8 +94,10 @@ local function smart_enter()
   if ok then
     local visible_ok, visible = pcall(cmp.is_visible)
     if visible_ok and visible then
-      cmp.accept()
-      return
+      local accepted = cmp.accept()
+      if accepted then
+        return
+      end
     end
   end
 
@@ -540,9 +542,17 @@ require("lazy").setup({
       -- IDE 风格补全：
       -- <C-space> 触发补全
       -- <Up>/<Down> 或 <C-n>/<C-p> 选择候选项
-      -- <Enter> 确认补全
+      -- <Enter> 只在你明确选中候选项后确认补全，否则正常换行
       -- <Tab> / <S-Tab> 仅用于 snippet 跳转
       keymap = { preset = 'enter' },
+      completion = {
+        list = {
+          selection = {
+            preselect = false,
+            auto_insert = false,
+          },
+        },
+      },
       appearance = {
         use_nvim_cmp_as_default = true, -- 让它的外观模仿经典的 nvim-cmp
         nerd_font_variant = 'mono'
