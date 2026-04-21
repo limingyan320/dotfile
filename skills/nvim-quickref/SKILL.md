@@ -100,6 +100,7 @@ file_browser 扩展 opts：`hidden = true`, `grouped = true`（目录排前面�
 ### `numToStr/Comment.nvim` — 注释
 - `event = { BufReadPre, BufNewFile }`
 - 默认 `gcc` / `gc{motion}` / visual `gc` 保留；外加自定义 visual `#`
+- 通过 `pre_hook` 优先使用当前 buffer 的原生 `commentstring`，避免内置 treesitter 注释推导在某些文件里报错；所以 Python 会走 `# %s`，Lua 会走 `-- %s`
 
 ### `sphamba/smear-cursor.nvim` — 光标拖影动画
 - `event = VeryLazy`

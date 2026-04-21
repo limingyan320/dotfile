@@ -243,6 +243,8 @@ browser 内（telescope 默认键）：
 
 > 普通可编辑 buffer 里，光标位于 `{}` / `[]` / `()` 中间时按 `Enter`，会拆成三行并让闭括号和起始缩进对齐；Python、Swift 这类代码都适用。
 
+> 注释优先走当前文件类型自己的原生 `commentstring`；比如 Python 会用 `# %s`，Lua 会用 `-- %s`。
+
 ### 缩进调整
 
 | 按键 | 操作 |

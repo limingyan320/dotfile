@@ -325,10 +325,6 @@ vim.keymap.set("v", "{", "sa{", { remap = true })
 vim.keymap.set("v", "'", "sa'", { remap = true })
 vim.keymap.set("v", '"', 'sa"', { remap = true })
 vim.keymap.set("v", "`", "sa`", { remap = true })
-vim.keymap.set("x", "#", "gc", {
-  desc = "Toggle comment for selection",
-  remap = true,
-})
 vim.api.nvim_create_autocmd("BufEnter", {
   callback = function(args)
     attach_smart_enter(args.buf)
@@ -518,7 +514,51 @@ require("lazy").setup({
   {
     "numToStr/Comment.nvim",
     event = { "BufReadPre", "BufNewFile" },
-    opts = {},
+    opts = function()
+      local ft = require("Comment.ft")
+      local utils = require("Comment.utils")
+
+      return {
+        -- 优先使用当前 buffer 的原生 commentstring，避免插件内置的
+        -- treesitter 注释计算在某些文件里拿到 nil tree 后直接报错。
+        pre_hook = function(ctx)
+          if ctx.ctype == utils.ctype.linewise and vim.bo.commentstring ~= "" then
+            return vim.bo.commentstring
+          end
+          return ft.get(vim.bo.filetype, ctx.ctype) or vim.bo.commentstring
+        end,
+      }
+    end,
+    config = function(_, opts)
+      require("Comment").setup(opts)
+
+      local api = require("Comment.api")
+      local esc = vim.api.nvim_replace_termcodes("<ESC>", true, false, true)
+
+      vim.keymap.set("n", "gc", api.call("toggle.linewise", "g@"), {
+        expr = true,
+        desc = "Toggle comment",
+      })
+      vim.keymap.set("n", "gcc", function()
+        if vim.v.count == 0 then
+          api.toggle.linewise.current()
+        else
+          api.toggle.linewise.count(vim.v.count)
+        end
+      end, {
+        desc = "Toggle comment line",
+      })
+      vim.keymap.set("x", "gc", function()
+        vim.api.nvim_feedkeys(esc, "nx", false)
+        api.toggle.linewise(vim.fn.visualmode())
+      end, {
+        desc = "Toggle comment",
+      })
+      vim.keymap.set("x", "#", "gc", {
+        remap = true,
+        desc = "Toggle comment for selection",
+      })
+    end,
   },
   -- 光标残影动画
   {
