@@ -58,7 +58,7 @@ local function shift_current_line(delta)
   vim.api.nvim_win_set_cursor(0, { row, new_col })
 end
 
-local function swift_block_enter()
+local function paired_block_enter()
   local bufnr = vim.api.nvim_get_current_buf()
   local row, col = unpack(vim.api.nvim_win_get_cursor(0))
   local line = vim.api.nvim_get_current_line()
@@ -101,14 +101,32 @@ local function smart_enter()
     end
   end
 
-  if vim.bo.filetype == "swift" then
-    if swift_block_enter() then
-      return
-    end
+  if paired_block_enter() then
+    return
   end
 
   local cr = vim.api.nvim_replace_termcodes("<CR>", true, false, true)
   vim.api.nvim_feedkeys(cr, "n", false)
+end
+
+local function attach_smart_enter(bufnr)
+  if not vim.api.nvim_buf_is_valid(bufnr) then
+    return
+  end
+
+  if vim.bo[bufnr].buftype ~= "" or not vim.bo[bufnr].modifiable then
+    return
+  end
+
+  if vim.b[bufnr].smart_enter_attached then
+    return
+  end
+
+  vim.b[bufnr].smart_enter_attached = true
+  vim.keymap.set("i", "<CR>", smart_enter, {
+    buffer = bufnr,
+    desc = "Smart enter",
+  })
 end
 
 -- SSH / 纯 tty 环境下没有 $DISPLAY，xclip/wl-copy 都失效，
@@ -291,15 +309,12 @@ vim.keymap.set("x", "#", "<Plug>(comment_toggle_linewise_visual)",{
   desc = "Toggle comment for selection",
   remap = true,
 })
-vim.api.nvim_create_autocmd("FileType", {
-  pattern = "swift",
+vim.api.nvim_create_autocmd("BufEnter", {
   callback = function(args)
-    vim.keymap.set("i", "<CR>", smart_enter, {
-      buffer = args.buf,
-      desc = "Swift smart enter",
-    })
+    attach_smart_enter(args.buf)
   end,
 })
+attach_smart_enter(0)
 
 require("lazy").setup({
   -- 文件浏览（替代 netrw）：把目录当 buffer 编辑，按 - 回到父目录

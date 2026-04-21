@@ -13,7 +13,7 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 
 - `number` + `relativenumber` + `termguicolors`
 - 默认缩进：`expandtab = true`，`tabstop = 2`，`shiftwidth = 2`，`softtabstop = 2`（2-space soft tabs）
-- Swift 例外：运行时 `ftplugin/swift.vim` 会把 `shiftwidth` / `softtabstop` 设为 4；当前配置额外修正了在 `{}` / `[]` / `()` 中间按 `<CR>` 时的错位缩进
+- Swift 例外：运行时 `ftplugin/swift.vim` 会把 `shiftwidth` / `softtabstop` 设为 4；普通可编辑 buffer 在 `{}` / `[]` / `()` 中间按 `<CR>` 时会自动拆成三行，并让闭括号对齐回起始缩进
 - `clipboard = unnamedplus`；检测到 `$SSH_TTY` / `$SSH_CONNECTION` / `$XDG_SESSION_TYPE=tty` 时自动切到 **OSC 52**（走终端剪贴板，需要 iTerm2/WezTerm/kitty 等允许剪贴板访问，tmux 需 `set-clipboard on`）
 - `autoread` + `updatetime = 500`（缩短 `CursorHold` 触发间隔让外部改动近实时可见）
 - 外部改动侦测：`FocusGained` / `BufEnter` / `CursorHold{,I}` / `TermLeave` 主动 `checktime`；每个文件 buffer 还会跑一个 `uv.new_fs_event` watcher，被外部改动后弹 WARN `文件被外部修改，已重新加载`
@@ -26,6 +26,7 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 | n/i | `<F2>` | toggle paste mode |
 | n | `<leader>vp` | toggle paste mode |
 | n | `<leader>yp` | 复制当前 buffer 绝对路径到 `+` 和 `"` |
+| i | `<CR>` | 智能回车：已选中补全项时确认；否则正常换行；在 `{}` / `[]` / `()` 中间会自动拆行并对齐闭括号 |
 | n/x/i | `<M-h>` / `<M-l>` | 左移 / 右移当前行或选区缩进 |
 | n/v | `H` | `^`（行首非空） |
 | n/v | `L` | `$`（行尾） |
@@ -125,7 +126,7 @@ LSP 键位：
 - `keymap = { preset = 'enter' }`（更接近 IDE）:
   - `<C-space>` 触发补全
   - `<Up>` / `<Down>` 或 `<C-p>` / `<C-n>` 上下选择
-  - `<CR>` 只在**你已经选中候选项**时确认补全；否则正常换行
+  - `<CR>` 只在**你已经选中候选项**时确认补全；否则正常换行；如果光标正在 `{}` / `[]` / `()` 中间，会智能拆行并让闭括号对齐
   - `<C-e>` 关闭补全菜单
   - `<Tab>` / `<S-Tab>` 只用于 snippet 前进 / 后退
 - `completion.list.selection = { preselect = false, auto_insert = false }`：不默认预选第一项，避免回车误补全
