@@ -25,6 +25,7 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 |------|----|------|
 | n/i | `<F2>` | toggle paste mode |
 | n | `<leader>vp` | toggle paste mode |
+| n | `<leader>z` | 像 tmux `prefix z` 一样临时放大当前窗口；再按一次恢复原分屏布局 |
 | n | `<leader>yp` | 复制当前 buffer 绝对路径到 `+` 和 `"` |
 | i | `<CR>` | 智能回车：已选中补全项时确认；否则正常换行；在 `{}` / `[]` / `()` 中间会自动拆行并对齐闭括号 |
 | n/x/i | `<M-h>` / `<M-l>` | 左移 / 右移当前行或选区缩进 |

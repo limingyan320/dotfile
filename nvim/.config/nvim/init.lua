@@ -14,6 +14,7 @@ vim.opt.rtp:prepend(lazypath)
 vim.opt.number = true
 vim.opt.relativenumber = true
 vim.opt.clipboard = "unnamedplus"
+vim.g.mapleader = " "
 -- 统一用 2-space soft tabs，避免新行缩进看起来像硬 Tab 那样过宽
 vim.opt.expandtab = true
 vim.opt.tabstop = 2
@@ -152,8 +153,28 @@ local function toggle_paste_mode()
   vim.notify("paste mode: " .. (vim.opt.paste:get() and "on" or "off"))
 end
 
+local function toggle_window_zoom()
+  if vim.t.dotfiles_zoomed then
+    if #vim.api.nvim_list_tabpages() > 1 then
+      vim.cmd("tabclose")
+    else
+      vim.notify("没有可恢复的原始布局", vim.log.levels.WARN)
+    end
+    return
+  end
+
+  if #vim.api.nvim_tabpage_list_wins(0) <= 1 then
+    vim.notify("当前 tab 只有一个窗口", vim.log.levels.INFO)
+    return
+  end
+
+  vim.cmd("tab split")
+  vim.t.dotfiles_zoomed = true
+end
+
 vim.keymap.set({ "n", "i" }, "<F2>", toggle_paste_mode, { desc = "Toggle paste mode" })
 vim.keymap.set("n", "<leader>vp", toggle_paste_mode, { desc = "Toggle paste mode" })
+vim.keymap.set("n", "<leader>z", toggle_window_zoom, { desc = "Toggle window zoom" })
 
 local external_change_group = vim.api.nvim_create_augroup("DotfilesExternalChanges", { clear = true })
 local file_watchers = {}
@@ -254,7 +275,6 @@ vim.api.nvim_create_autocmd({ "BufDelete", "BufUnload", "BufWipeout" }, {
 -- 缩短 CursorHold 触发间隔（默认 4000ms），让外部改动几乎即时可见
 vim.opt.updatetime = 500
 
-vim.g.mapleader = " "
 vim.keymap.set("n", "<leader>t", function()
   local buf_name = vim.api.nvim_buf_get_name(0)
   local dir
