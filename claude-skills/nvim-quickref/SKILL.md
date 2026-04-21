@@ -99,7 +99,7 @@ file_browser 扩展 opts：`hidden = true`, `grouped = true`（目录排前面�
 
 ### `numToStr/Comment.nvim` — 注释
 - `event = { BufReadPre, BufNewFile }`
-- 默认 `gcc` / `gc{motion}` 保留；外加自定义 visual `#`
+- 默认 `gcc` / `gc{motion}` / visual `gc` 保留；外加自定义 visual `#`
 
 ### `sphamba/smear-cursor.nvim` — 光标拖影动画
 - `event = VeryLazy`
