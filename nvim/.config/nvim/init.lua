@@ -325,18 +325,9 @@ vim.keymap.set("v", "{", "sa{", { remap = true })
 vim.keymap.set("v", "'", "sa'", { remap = true })
 vim.keymap.set("v", '"', 'sa"', { remap = true })
 vim.keymap.set("v", "`", "sa`", { remap = true })
-vim.keymap.set("x", "#", function()
-  local ok, api = pcall(require, "Comment.api")
-  if not ok then
-    vim.notify("Comment.nvim 未加载", vim.log.levels.WARN)
-    return
-  end
-
-  local esc = vim.api.nvim_replace_termcodes("<ESC>", true, false, true)
-  vim.api.nvim_feedkeys(esc, "nx", false)
-  api.locked("toggle.linewise")(vim.fn.visualmode())
-end, {
+vim.keymap.set("x", "#", "gc", {
   desc = "Toggle comment for selection",
+  remap = true,
 })
 vim.api.nvim_create_autocmd("BufEnter", {
   callback = function(args)
