@@ -130,6 +130,43 @@ local function attach_smart_enter(bufnr)
   })
 end
 
+local function remove_local_key_token(bufnr, optname, token)
+  local current = vim.api.nvim_get_option_value(optname, { buf = bufnr })
+  if current == "" then
+    return
+  end
+
+  local items = vim.split(current, ",", { plain = true, trimempty = true })
+  local filtered = {}
+  local changed = false
+
+  for _, item in ipairs(items) do
+    if item ~= token then
+      table.insert(filtered, item)
+    else
+      changed = true
+    end
+  end
+
+  if changed then
+    vim.api.nvim_set_option_value(optname, table.concat(filtered, ","), { buf = bufnr })
+  end
+end
+
+local function disable_colon_reindent(bufnr)
+  if not vim.api.nvim_buf_is_valid(bufnr) then
+    return
+  end
+
+  -- 某些 ftplugin 会把 ":" 放进 indentkeys/cinkeys。这样在行尾用 A 进入
+  -- insert 后输入 ":" 时，nvim 会立刻重算当前行缩进，看起来像“冒号把行往右推了一次”。
+  -- 这里关掉这个触发，保留 Enter 时的正常续行缩进。
+  remove_local_key_token(bufnr, "indentkeys", ":")
+  remove_local_key_token(bufnr, "indentkeys", "<:>")
+  remove_local_key_token(bufnr, "cinkeys", ":")
+  remove_local_key_token(bufnr, "cinkeys", "<:>")
+end
+
 -- SSH / 纯 tty 环境下没有 $DISPLAY，xclip/wl-copy 都失效，
 -- 改用 OSC 52 让终端（iTerm2/WezTerm/kitty 等）把内容写到本地剪贴板。
 -- 需要外层 tmux 开启 set-clipboard on、iTerm2 允许剪贴板访问。
@@ -331,6 +368,12 @@ vim.api.nvim_create_autocmd("BufEnter", {
   end,
 })
 attach_smart_enter(0)
+vim.api.nvim_create_autocmd("FileType", {
+  callback = function(args)
+    disable_colon_reindent(args.buf)
+  end,
+})
+disable_colon_reindent(0)
 
 require("lazy").setup({
   -- 文件浏览（替代 netrw）：把目录当 buffer 编辑，按 - 回到父目录

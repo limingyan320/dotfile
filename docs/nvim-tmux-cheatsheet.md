@@ -9,6 +9,7 @@
 > Leader 键 = `空格`
 > 默认缩进 = 2 个空格（`expandtab` + `tabstop/shiftwidth/softtabstop = 2`）
 > Swift 例外 = 跟随运行时 ftplugin 用 4 空格；普通可编辑 buffer 在 `{}` / `[]` / `()` 中间按 `Enter` 时会自动拆成三行，并让闭括号和起始缩进对齐
+> 输入 `:` 不会再触发“当前行立即自动纠偏缩进”；只保留 `Enter` 续行时的正常缩进
 
 ## 窗口（Split）管理
 
