@@ -20,6 +20,33 @@ vim.opt.expandtab = true
 vim.opt.tabstop = 2
 vim.opt.shiftwidth = 2
 vim.opt.softtabstop = 2
+vim.opt.foldenable = true
+vim.opt.foldlevel = 99
+vim.opt.foldlevelstart = 99
+
+local function statusline_escape(text)
+  return text:gsub("%%", "%%%%")
+end
+
+function _G.dotfiles_winbar()
+  if vim.bo.buftype ~= "" then
+    return ""
+  end
+
+  local ok, navic = pcall(require, "nvim-navic")
+  if ok and navic.is_available() then
+    return statusline_escape(" " .. navic.get_location())
+  end
+
+  local name = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(0), ":t")
+  if name == "" then
+    return ""
+  end
+
+  return statusline_escape(" " .. name)
+end
+
+vim.o.winbar = "%{%v:lua.dotfiles_winbar()%}"
 
 local function indent_step(bufnr)
   local sw = vim.bo[bufnr].shiftwidth
@@ -165,6 +192,30 @@ local function disable_colon_reindent(bufnr)
   remove_local_key_token(bufnr, "indentkeys", "<:>")
   remove_local_key_token(bufnr, "cinkeys", ":")
   remove_local_key_token(bufnr, "cinkeys", "<:>")
+end
+
+local function attach_treesitter_folds(winid, bufnr)
+  if not vim.api.nvim_win_is_valid(winid) or not vim.api.nvim_buf_is_valid(bufnr) then
+    return
+  end
+
+  if vim.bo[bufnr].buftype ~= "" then
+    vim.wo[winid].foldmethod = "manual"
+    vim.wo[winid].foldexpr = "0"
+    return
+  end
+
+  local ok = pcall(vim.treesitter.start, bufnr)
+  local parser = ok and vim.treesitter.get_parser(bufnr) or nil
+  local has_query = vim.treesitter.query.get(vim.bo[bufnr].filetype, "folds") ~= nil
+  if not ok or parser == nil or not has_query then
+    vim.wo[winid].foldmethod = "manual"
+    vim.wo[winid].foldexpr = "0"
+    return
+  end
+
+  vim.wo[winid].foldmethod = "expr"
+  vim.wo[winid].foldexpr = "v:lua.vim.treesitter.foldexpr()"
 end
 
 -- SSH / 纯 tty 环境下没有 $DISPLAY，xclip/wl-copy 都失效，
@@ -374,6 +425,12 @@ vim.api.nvim_create_autocmd("FileType", {
   end,
 })
 disable_colon_reindent(0)
+vim.api.nvim_create_autocmd({ "BufWinEnter", "WinEnter" }, {
+  callback = function(args)
+    attach_treesitter_folds(vim.api.nvim_get_current_win(), args.buf)
+  end,
+})
+attach_treesitter_folds(0, 0)
 
 require("lazy").setup({
   -- 文件浏览（替代 netrw）：把目录当 buffer 编辑，按 - 回到父目录
@@ -406,6 +463,35 @@ require("lazy").setup({
         },
       },
     },
+    config = function(_, opts)
+      require("oil").setup(opts)
+
+      local function repair_startup_directory_buffer()
+        local name = vim.api.nvim_buf_get_name(0)
+        local is_empty_oil = name:match("^oil://")
+          and vim.bo.filetype == ""
+          and vim.api.nvim_buf_line_count(0) <= 1
+        local is_raw_directory = name ~= "" and vim.fn.isdirectory(name) == 1
+        if not is_empty_oil and not is_raw_directory then
+          return
+        end
+
+        local path = name:gsub("^oil://", "")
+        require("oil").open(path)
+      end
+
+      if vim.v.vim_did_enter == 1 then
+        vim.schedule(repair_startup_directory_buffer)
+      else
+        vim.schedule(repair_startup_directory_buffer)
+        vim.api.nvim_create_autocmd("VimEnter", {
+          once = true,
+          callback = function()
+            vim.schedule(repair_startup_directory_buffer)
+          end,
+        })
+      end
+    end,
   },
   {
     "folke/tokyonight.nvim",
@@ -430,12 +516,11 @@ require("lazy").setup({
     "nvim-treesitter/nvim-treesitter",
     build = ":TSUpdate",
     event = "BufReadPost",
-    opts = {
-      ensure_installed = {
-        "lua", "python", "javascript", "typescript", "html", "css",
-        "json", "yaml", "bash", "markdown", "markdown_inline", "vim", "vimdoc",
-      },
-    },
+    config = function()
+      require("nvim-treesitter").setup({
+        install_dir = vim.fn.stdpath("data") .. "/site",
+      })
+    end,
   },
   -- 底部状态栏（箭头分隔符，显示模式/文件/路径/git 分支等）
   {
@@ -626,8 +711,46 @@ require("lazy").setup({
   {
     "neovim/nvim-lspconfig",
     event = { "BufReadPre", "BufNewFile" },
-    dependencies = { "saghen/blink.cmp" },
+    dependencies = { "saghen/blink.cmp", "SmiteshP/nvim-navic" },
     config = function()
+      local navic = require("nvim-navic")
+      local function attach_navic(client, bufnr)
+        if not client or not vim.api.nvim_buf_is_valid(bufnr) then
+          return
+        end
+        if not client.server_capabilities.documentSymbolProvider or navic.is_available(bufnr) then
+          return
+        end
+        navic.attach(client, bufnr)
+      end
+
+      navic.setup({
+        highlight = false,
+        separator = " > ",
+        depth_limit = 5,
+        lazy_update_context = false,
+        safe_output = true,
+        lsp = {
+          auto_attach = false,
+        },
+        icons = {
+          enabled = false,
+        },
+      })
+
+      vim.api.nvim_create_autocmd("LspAttach", {
+        callback = function(args)
+          local client = vim.lsp.get_client_by_id(args.data.client_id)
+          attach_navic(client, args.buf)
+        end,
+      })
+
+      for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+        for _, client in ipairs(vim.lsp.get_clients({ bufnr = bufnr })) do
+          attach_navic(client, bufnr)
+        end
+      end
+
       vim.lsp.config("*", {
         capabilities = require("blink.cmp").get_lsp_capabilities(),
       })

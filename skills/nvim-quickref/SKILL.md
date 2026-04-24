@@ -15,6 +15,9 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 - 默认缩进：`expandtab = true`，`tabstop = 2`，`shiftwidth = 2`，`softtabstop = 2`（2-space soft tabs）
 - Swift 例外：运行时 `ftplugin/swift.vim` 会把 `shiftwidth` / `softtabstop` 设为 4；普通可编辑 buffer 在 `{}` / `[]` / `()` 中间按 `<CR>` 时会自动拆成三行，并让闭括号对齐回起始缩进
 - 关闭了 `:` 触发的即时重缩进；像 Python / Lua / JavaScript 里在行尾 `A` 进入插入后输入 `:`，不会再把当前行“纠偏”到新的缩进列
+- `foldmethod = expr` + `foldexpr = v:lua.vim.treesitter.foldexpr()`；默认 `foldlevel/foldlevelstart = 99`，可折叠但打开文件时保持全部展开
+- 顶部 `winbar` 会显示当前 buffer 名或 `LSP symbol breadcrumb`（例如 `Module > Class > Method`）
+- IDE 风格辅助：长函数时直接看顶部 `winbar` 知道自己在哪个函数里；想看模块骨架时用 `zc` / `zo` / `za` / `zM` / `zR`
 - `clipboard = unnamedplus`；检测到 `$SSH_TTY` / `$SSH_CONNECTION` / `$XDG_SESSION_TYPE=tty` 时自动切到 **OSC 52**（走终端剪贴板，需要 iTerm2/WezTerm/kitty 等允许剪贴板访问，tmux 需 `set-clipboard on`）
 - `autoread` + `updatetime = 500`（缩短 `CursorHold` 触发间隔让外部改动近实时可见）
 - 外部改动侦测：`FocusGained` / `BufEnter` / `CursorHold{,I}` / `TermLeave` 主动 `checktime`；每个文件 buffer 还会跑一个 `uv.new_fs_event` watcher，被外部改动后弹 WARN `文件被外部修改，已重新加载`
@@ -59,6 +62,11 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 ### `nvim-lualine/lualine.nvim` — 状态栏
 - `event = VeryLazy`
 - 箭头分隔符：`section_separators = { left = "", right = "" }`, `component_separators = { left = "", right = "" }`
+
+### `SmiteshP/nvim-navic` — 当前代码位置 breadcrumb
+- 作为 `nvim-lspconfig` 依赖加载
+- 在 `LspAttach` 时对支持 `documentSymbolProvider` 的 LSP 自动 attach
+- `winbar` 动态显示当前位置；无 LSP symbol 时回退显示当前文件名
 
 ### `nvim-telescope/telescope.nvim` (+ `telescope-file-browser.nvim`)
 
