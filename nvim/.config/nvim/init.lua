@@ -629,22 +629,6 @@ require("lazy").setup({
   {
     "lewis6991/gitsigns.nvim",
     event = { "BufReadPre", "BufNewFile" },
-    keys = {
-      {
-        "]h",
-        function()
-          require("gitsigns").nav_hunk("next")
-        end,
-        desc = "Next git hunk",
-      },
-      {
-        "[h",
-        function()
-          require("gitsigns").nav_hunk("prev")
-        end,
-        desc = "Prev git hunk",
-      },
-    },
     opts = {},
   },
   -- Git diff 可视化（:DiffviewOpen 打开 side-by-side diff）
