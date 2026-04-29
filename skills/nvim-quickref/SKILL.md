@@ -45,6 +45,7 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 ### `stevearc/oil.nvim` — 文件浏览（替代 netrw）
 - `lazy = false`（启动时要接管 `nvim <dir>` / `nvim .`）
 - `-` 打开父目录（全局）
+- `<C-p>`（oil buffer 内自定义）：用 Telescope 搜索当前 oil 目录里的文件
 - `gy`（oil buffer 内自定义）：复制光标下 entry 的绝对路径到 `+` / `"`
 - `show_hidden = true`, `watch_for_changes = true`, `default_file_explorer = true`
 
@@ -89,7 +90,7 @@ file_browser 扩展 opts：`hidden = true`, `grouped = true`（目录排前面�
 
 | 键 | 动作 |
 |----|------|
-| `<C-p>` | `find_files({ cwd = project_root() })` |
+| `<C-p>` | 普通文件里 `find_files({ cwd = project_root() })`；oil 目录视图里用当前 oil 目录 |
 | `<leader>fg` | `live_grep({ cwd = project_root() })` |
 | `<leader>fb` | `buffers` |
 | `<leader>fe` | file_browser（项目根，`select_buffer`） |

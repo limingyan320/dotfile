@@ -452,6 +452,18 @@ require("lazy").setup({
         show_hidden = true,
       },
       keymaps = {
+        ["<C-p>"] = {
+          desc = "Find files in current oil directory",
+          callback = function()
+            local oil = require("oil")
+            local dir = oil.get_current_dir()
+            if not dir then
+              return
+            end
+
+            require("telescope.builtin").find_files({ cwd = dir })
+          end,
+        },
         ["gy"] = {
           desc = "Yank abs path of entry under cursor",
           callback = function()
