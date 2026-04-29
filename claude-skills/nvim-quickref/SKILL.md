@@ -96,7 +96,8 @@ file_browser 扩展 opts：`hidden = true`, `grouped = true`（目录排前面�
 | `<leader>fE` | file_browser（`%:p:h`，当前文件目录） |
 
 ### `lewis6991/gitsigns.nvim` — Git 侧边栏
-- `event = { BufReadPre, BufNewFile }`，默认 opts
+- `event = { BufReadPre, BufNewFile }`
+- `]h` / `[h`：跳到下一个 / 上一个 git hunk（连续改动块）
 
 ### `sindrets/diffview.nvim` — Git diff 视图
 - `cmd = { DiffviewOpen, DiffviewFileHistory }`（按命令懒加载）
