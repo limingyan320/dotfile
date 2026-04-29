@@ -65,7 +65,7 @@ echo ""
 
 case "$PKG_MANAGER" in
     brew)
-        for pkg in neovim tmux git fastfetch; do
+        for pkg in neovim tmux git fastfetch ripgrep; do
             if brew list "$pkg" &>/dev/null; then
                 warn "$pkg 已安装，跳过"
             else
@@ -76,7 +76,7 @@ case "$PKG_MANAGER" in
         ;;
     rpm-ostree)
         NEED_INSTALL=()
-        for pkg in neovim tmux git wl-clipboard bash-completion fastfetch; do
+        for pkg in neovim tmux git wl-clipboard bash-completion fastfetch ripgrep; do
             if rpm -q "$pkg" &>/dev/null; then
                 warn "$pkg 已安装，跳过"
             else
@@ -92,7 +92,7 @@ case "$PKG_MANAGER" in
         fi
         ;;
     dnf)
-        for pkg in neovim tmux git wl-clipboard bash-completion fastfetch; do
+        for pkg in neovim tmux git wl-clipboard bash-completion fastfetch ripgrep; do
             if rpm -q "$pkg" &>/dev/null; then
                 warn "$pkg 已安装，跳过"
             else
@@ -105,7 +105,7 @@ case "$PKG_MANAGER" in
         info "正在更新软件包列表..."
         sudo apt update || warn "apt update 失败（可能是网络/代理问题），继续尝试安装已缓存的包"
         # neovim 单独处理：jammy 的 apt 仓库版本是 0.6.1，本仓库插件需要 ≥0.9
-        for pkg in tmux git xclip bash-completion; do
+        for pkg in tmux git xclip bash-completion ripgrep; do
             if dpkg -s "$pkg" &>/dev/null; then
                 warn "$pkg 已安装，跳过"
             else
@@ -156,7 +156,7 @@ case "$PKG_MANAGER" in
         ;;
     none)
         error "没有找到包管理器 (brew/rpm-ostree/dnf/apt)"
-        error "请手动安装: neovim tmux git"
+        error "请手动安装: neovim tmux git ripgrep"
         error "安装后重新运行此脚本以创建符号链接"
         ;;
 esac
