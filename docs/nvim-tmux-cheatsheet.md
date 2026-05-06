@@ -176,14 +176,14 @@ browser 内（telescope 默认键）：
 
 | 按键 | 操作 |
 |------|------|
-| `/pattern` → `n`/`N` | 搜索并跳转（≈ Ctrl+F）；会高亮全部匹配，并在输入时增量定位 |
-| `*` / `#` | 搜索光标下的词（向下/向上） |
+| `/pattern` → `n`/`N` | 登记搜索词并高亮全部匹配；输入完成时不滚动视野，按 `n` / `N` 才跳转 |
+| `*` / `#` | 搜索光标下的词；第一次只高亮不滚动，同一个词再按才向下 / 向上跳 |
 | `/\\cpattern` | 强制忽略大小写搜索 |
 | `/\\Cpattern` | 强制区分大小写搜索 |
 | `:%s/old/new/gc` | 全文替换（逐个确认） |
 | `:noh` | 清除搜索高亮 |
 
-> 当前默认启用了 `ignorecase + smartcase`：搜 `status` 会同时匹配 `Status/status/STATUS`；搜 `Status` 时会自动区分大小写。
+> 当前默认启用了 `hlsearch + ignorecase + smartcase`，但关闭了 `incsearch`：搜完会高亮全部匹配，小写默认忽略大小写，带大写时自动区分大小写；搜索输入过程中不会自动滚动视野。
 
 ### LSP 跳转（自定义配置）
 
@@ -293,6 +293,7 @@ browser 内（telescope 默认键）：
 | `zR` | 展开当前文件所有折叠 |
 
 > 当前配置使用 Treesitter 折叠，但默认 `foldlevel=99`，所以打开文件时不会自动全折起来；想看模块骨架时再手动用 `zM` / `zc`。
+> 折叠依赖对应语言的 Treesitter parser/query；当前清单包含 Go 相关的 `go` / `gomod` / `gosum` / `gowork`，以及 JSX/TSX 相关的 `ecma` / `javascript` / `jsx` / `typescript` / `tsx`。
 
 这样会临时关闭会干扰粘贴的自动缩进逻辑，避免整段代码被二次缩进。
 
@@ -327,9 +328,12 @@ browser 内（telescope 默认键）：
 
 | 按键 | 操作 |
 |------|------|
+| `]h` / `[h` | 跳到下一个 / 上一个 Git 改动块（hunk） |
 | `Space gd` | 打开 diff 视图 |
 | `Space gh` | 当前文件 Git 历史 |
 | `Space gq` | 关闭 diff 视图 |
+
+> `hunk` 可以理解成一整块连续的改动，不管这块里是新增、删除还是修改。`[h` / `]h` 就是在这些改动块之间跳。
 
 ---
 

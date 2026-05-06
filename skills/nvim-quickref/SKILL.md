@@ -17,7 +17,7 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 - 关闭了 `:` 触发的即时重缩进；像 Python / Lua / JavaScript 里在行尾 `A` 进入插入后输入 `:`，不会再把当前行“纠偏”到新的缩进列
 - `foldmethod = expr` + `foldexpr = v:lua.vim.treesitter.foldexpr()`；默认 `foldlevel/foldlevelstart = 99`，可折叠但打开文件时保持全部展开
 - 顶部 `winbar` 会显示当前 buffer 名或 `LSP symbol breadcrumb`（例如 `Module > Class > Method`）
-- 搜索默认启用 `hlsearch + incsearch + ignorecase + smartcase`：输入时增量定位并高亮全部匹配；小写默认忽略大小写，带大写时自动区分大小写；可用 `/\c...` / `/\C...` 强制切换
+- 搜索默认启用 `hlsearch + ignorecase + smartcase`，关闭 `incsearch`；`/pattern` 只登记搜索词并高亮，不滚动当前窗口视野，按 `n` / `N` 才跳转；`*` / `#` 第一次只高亮当前词，同一个词再按才跳转；可用 `/\c...` / `/\C...` 强制切换大小写规则
 - IDE 风格辅助：长函数时直接看顶部 `winbar` 知道自己在哪个函数里；想看模块骨架时用 `zc` / `zo` / `za` / `zM` / `zR`
 - `clipboard = unnamedplus`；检测到 `$SSH_TTY` / `$SSH_CONNECTION` / `$XDG_SESSION_TYPE=tty` 时自动切到 **OSC 52**（走终端剪贴板，需要 iTerm2/WezTerm/kitty 等允许剪贴板访问，tmux 需 `set-clipboard on`）
 - `autoread` + `updatetime = 500`（缩短 `CursorHold` 触发间隔让外部改动近实时可见）
@@ -59,7 +59,9 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 
 ### `nvim-treesitter/nvim-treesitter` — 语法
 - `event = BufReadPost`, `build = :TSUpdate`
-- `ensure_installed`: lua, python, javascript, typescript, html, css, json, yaml, bash, markdown, markdown_inline, vim, vimdoc
+- `treesitter_languages` 清单启动后用新版 `require("nvim-treesitter").install(...)` 自动补齐缺失 parser / query
+- language 清单：lua, python, ecma, javascript, jsx, typescript, tsx, html, css, json, yaml, bash, markdown, markdown_inline, vim, vimdoc, go, gomod, gosum, gowork
+- React filetype 映射：`javascriptreact` 使用 `javascript` parser；`typescriptreact` 使用 `tsx` parser
 
 ### `nvim-lualine/lualine.nvim` — 状态栏
 - `event = VeryLazy`
@@ -97,7 +99,8 @@ file_browser 扩展 opts：`hidden = true`, `grouped = true`（目录排前面�
 | `<leader>fE` | file_browser（`%:p:h`，当前文件目录） |
 
 ### `lewis6991/gitsigns.nvim` — Git 侧边栏
-- `event = { BufReadPre, BufNewFile }`，默认 opts
+- `event = { BufReadPre, BufNewFile }`
+- `]h` / `[h`：跳到下一个 / 上一个 git hunk（连续改动块）
 
 ### `sindrets/diffview.nvim` — Git diff 视图
 - `cmd = { DiffviewOpen, DiffviewFileHistory }`（按命令懒加载）

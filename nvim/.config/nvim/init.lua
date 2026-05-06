@@ -21,12 +21,38 @@ vim.opt.tabstop = 2
 vim.opt.shiftwidth = 2
 vim.opt.softtabstop = 2
 vim.opt.hlsearch = true
-vim.opt.incsearch = true
+vim.opt.incsearch = false
 vim.opt.ignorecase = true
 vim.opt.smartcase = true
 vim.opt.foldenable = true
 vim.opt.foldlevel = 99
 vim.opt.foldlevelstart = 99
+
+local treesitter_languages = {
+  "lua",
+  "python",
+  "ecma",
+  "javascript",
+  "jsx",
+  "typescript",
+  "tsx",
+  "html",
+  "css",
+  "json",
+  "yaml",
+  "bash",
+  "markdown",
+  "markdown_inline",
+  "vim",
+  "vimdoc",
+  "go",
+  "gomod",
+  "gosum",
+  "gowork",
+}
+
+vim.treesitter.language.register("javascript", "javascriptreact")
+vim.treesitter.language.register("tsx", "typescriptreact")
 
 local function statusline_escape(text)
   return text:gsub("%%", "%%%%")
@@ -209,9 +235,12 @@ local function attach_treesitter_folds(winid, bufnr)
     return
   end
 
-  local ok = pcall(vim.treesitter.start, bufnr)
-  local parser = ok and vim.treesitter.get_parser(bufnr) or nil
-  local has_query = vim.treesitter.query.get(vim.bo[bufnr].filetype, "folds") ~= nil
+  local filetype = vim.bo[bufnr].filetype
+  local lang = vim.treesitter.language.get_lang(filetype) or filetype
+  local ok = pcall(vim.treesitter.start, bufnr, lang)
+  local parser = ok and vim.treesitter.get_parser(bufnr, lang) or nil
+  local query_ok, query = pcall(vim.treesitter.query.get, lang, "folds")
+  local has_query = query_ok and query ~= nil
   if not ok or parser == nil or not has_query then
     vim.wo[winid].foldmethod = "manual"
     vim.wo[winid].foldexpr = "0"
@@ -264,9 +293,67 @@ local function toggle_window_zoom()
   vim.t.dotfiles_zoomed = true
 end
 
+local function set_search_without_jump(pattern, forward)
+  if not pattern or pattern == "" then
+    return false
+  end
+
+  local view = vim.fn.winsaveview()
+  vim.fn.setreg("/", pattern)
+  vim.fn.histadd("search", pattern)
+  vim.o.hlsearch = true
+  vim.cmd("let v:searchforward = " .. (forward and "1" or "0"))
+  vim.g.dotfiles_armed_search_pattern = pattern
+  vim.fn.winrestview(view)
+  return true
+end
+
+local function prompt_search_without_jump(forward)
+  local ok, pattern = pcall(vim.fn.input, forward and "/" or "?")
+  if not ok then
+    return
+  end
+
+  set_search_without_jump(pattern, forward)
+end
+
+local function cword_search_pattern()
+  local word = vim.fn.expand("<cword>")
+  if word == "" then
+    return nil
+  end
+
+  return "\\V\\<" .. vim.fn.escape(word, "\\") .. "\\>"
+end
+
+local function cword_search(forward)
+  local pattern = cword_search_pattern()
+  if not pattern then
+    return
+  end
+
+  local already_armed = vim.g.dotfiles_armed_search_pattern == pattern and vim.fn.getreg("/") == pattern
+  set_search_without_jump(pattern, forward)
+  if already_armed then
+    vim.cmd("normal! n")
+  end
+end
+
 vim.keymap.set({ "n", "i" }, "<F2>", toggle_paste_mode, { desc = "Toggle paste mode" })
 vim.keymap.set("n", "<leader>vp", toggle_paste_mode, { desc = "Toggle paste mode" })
 vim.keymap.set("n", "<leader>z", toggle_window_zoom, { desc = "Toggle window zoom" })
+vim.keymap.set("n", "/", function()
+  prompt_search_without_jump(true)
+end, { desc = "Search without jumping" })
+vim.keymap.set("n", "?", function()
+  prompt_search_without_jump(false)
+end, { desc = "Search backward without jumping" })
+vim.keymap.set("n", "*", function()
+  cword_search(true)
+end, { desc = "Search word without jumping first" })
+vim.keymap.set("n", "#", function()
+  cword_search(false)
+end, { desc = "Search word backward without jumping first" })
 
 local external_change_group = vim.api.nvim_create_augroup("DotfilesExternalChanges", { clear = true })
 local file_watchers = {}
@@ -533,9 +620,11 @@ require("lazy").setup({
     build = ":TSUpdate",
     event = "BufReadPost",
     config = function()
-      require("nvim-treesitter").setup({
+      local nvim_treesitter = require("nvim-treesitter")
+      nvim_treesitter.setup({
         install_dir = vim.fn.stdpath("data") .. "/site",
       })
+      nvim_treesitter.install(treesitter_languages)
     end,
   },
   -- 底部状态栏（箭头分隔符，显示模式/文件/路径/git 分支等）
@@ -641,6 +730,22 @@ require("lazy").setup({
   {
     "lewis6991/gitsigns.nvim",
     event = { "BufReadPre", "BufNewFile" },
+    keys = {
+      {
+        "]h",
+        function()
+          require("gitsigns").nav_hunk("next")
+        end,
+        desc = "Next git hunk",
+      },
+      {
+        "[h",
+        function()
+          require("gitsigns").nav_hunk("prev")
+        end,
+        desc = "Prev git hunk",
+      },
+    },
     opts = {},
   },
   -- Git diff 可视化（:DiffviewOpen 打开 side-by-side diff）
