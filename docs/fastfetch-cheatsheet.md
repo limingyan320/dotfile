@@ -15,6 +15,7 @@
 | --- | --- | --- |
 | `macos-rei31` | 凌波丽 / EVA 风格 | `fastfetch/presets/macos-rei31.jsonc` |
 | `ubuntu-sharingan` | 三勾玉写轮眼像素风 | `fastfetch/presets/ubuntu-sharingan.jsonc` + `fastfetch/logos/ubuntu_sharingan_eye.ffraw.txt` |
+| `obito-kamui` | 带土神威万花筒写轮眼高密度像素风 | `fastfetch/presets/ubuntu-obito-kamui.jsonc` + `fastfetch/logos/ubuntu_obito_kamui_eye.ffraw.txt` |
 | `finger` | 自定义图片字符画 | `fastfetch/logos/ss_finger.ffraw.txt` |
 | `plain` | 原生 fastfetch | 无额外资源 |
 
@@ -33,9 +34,13 @@ ff
 # 临时切到某个 profile
 DOTFILES_FASTFETCH_PROFILE=finger ff
 DOTFILES_FASTFETCH_PROFILE=plain ff
+DOTFILES_FASTFETCH_PROFILE=obito-kamui ff
 
 # 直接显示 finger 主题
 fffinger
+
+# 直接显示带土神威主题
+ffobito
 ```
 
 ## `~/.secrets` 覆盖

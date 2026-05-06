@@ -92,6 +92,14 @@ if [[ $- == *i* ]]; then
                     return
                 fi
                 ;;
+            obito-kamui|obito|kamui|ubuntu-obito)
+                preset="$HOME/.config/fastfetch/presets/ubuntu-obito-kamui.jsonc"
+                logo="$HOME/.config/fastfetch/logos/ubuntu_obito_kamui_eye.ffraw.txt"
+                if [ -f "$preset" ] && [ -f "$logo" ]; then
+                    command fastfetch --config "$preset" --logo-type file-raw --logo "$logo" --logo-padding-right 3 "$@"
+                    return
+                fi
+                ;;
             finger|ss-finger|middle-finger)
                 logo="$HOME/.config/fastfetch/logos/ss_finger.ffraw.txt"
                 if [ -f "$logo" ]; then
@@ -120,8 +128,12 @@ if [[ $- == *i* ]]; then
         DOTFILES_FASTFETCH_PROFILE="finger" __dotfiles_fastfetch_run "$@"
     }
 
+    ffobito() {
+        DOTFILES_FASTFETCH_PROFILE="obito-kamui" __dotfiles_fastfetch_run "$@"
+    }
+
     ffprofiles() {
-        printf '%s\n' "macos-rei31" "ubuntu-sharingan" "finger" "plain"
+        printf '%s\n' "macos-rei31" "ubuntu-sharingan" "obito-kamui" "finger" "plain"
     }
 fi
 

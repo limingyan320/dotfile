@@ -1,0 +1,112 @@
+// Ubuntu preset with an external raw logo rendered from an Obito/Kamui-inspired eye asset.
+{
+    "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
+    "general": {
+        "detectVersion": false
+    },
+    "display": {
+        "separator": "▌",
+        "key": {
+            "width": 18
+        },
+        "bar": {
+            "border": null,
+            "char": {
+                "elapsed": "█",
+                "total": "░"
+            },
+            "width": 28
+        }
+    },
+    "modules": [
+        {
+            "type": "custom",
+            "format": "{#196}╔════════════════════════════════════════════════════╗"
+        },
+        {
+            "type": "custom",
+            "format": "{#196}║ {#220}KAMUI PHASE SHIFT INTERFACE{#196}                  ║"
+        },
+        {
+            "type": "title",
+            "format": "{#196}║ {#208}{user-name-colored}{#196}@{host-name-colored} {#220}// {#166}obito mangekyo{#196} ║"
+        },
+        {
+            "type": "custom",
+            "format": "{#196}║ {#166}spiral breach // dimensional lock engaged{#196}    ║"
+        },
+        {
+            "type": "custom",
+            "format": "{#196}╚════════════════════════════════════════════════════╝"
+        },
+        {
+            "type": "custom",
+            "format": "{#208}▰▰▰ {#220}[SYSTEM]{#208} ▰▰▰"
+        },
+        {
+            "type": "os",
+            "key": "{#196}│ DISTRO         "
+        },
+        {
+            "type": "host",
+            "key": "{#196}│ HOST           "
+        },
+        {
+            "type": "kernel",
+            "key": "{#196}│ KERNEL         "
+        },
+        {
+            "type": "uptime",
+            "key": "{#196}│ UPTIME         "
+        },
+        {
+            "type": "packages",
+            "key": "{#196}│ PACKAGES       "
+        },
+        {
+            "type": "shell",
+            "key": "{#196}│ SHELL          "
+        },
+        {
+            "type": "terminal",
+            "key": "{#196}│ TERMINAL       "
+        },
+        {
+            "type": "custom",
+            "format": "{#208}▰▰▰ {#220}[PHASE CONTROL]{#208} ▰▰▰"
+        },
+        {
+            "type": "cpu",
+            "key": "{#196}│ CPU            "
+        },
+        {
+            "type": "gpu",
+            "key": "{#196}│ GPU            "
+        },
+        {
+            "type": "memory",
+            "key": "{#196}│ CHAKRA         ",
+            "format": "{used} / {total}"
+        },
+        {
+            "type": "disk",
+            "folders": "/",
+            "key": "{#196}│ STORAGE        ",
+            "format": "{size-used} / {size-total}"
+        },
+        {
+            "type": "localip",
+            "key": "{#196}│ LINK           ",
+            "format": "{ipv4}"
+        },
+        {
+            "type": "custom",
+            "format": "{#208}▰▰▰ {#220}[VISUAL SEAL]{#208} ▰▰▰"
+        },
+        "break",
+        {
+            "type": "colors",
+            "symbol": "circle"
+        }
+    ]
+}
