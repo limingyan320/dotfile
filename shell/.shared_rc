@@ -22,7 +22,7 @@ if [[ $- == *i* ]]; then
     alias claude='claude --dangerously-skip-permissions'
     alias codex='codex --yolo'
     alias g='nvitop'
-    alias v5='ssh -N -D 1080 administrator@192.168.100.127'
+    alias v5='ssh -N -D 192.168.100.160:1080 administrator@192.168.100.127'
 
     __dotfiles_fastfetch_default_profile() {
         local system
