@@ -34,6 +34,7 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 | n | `<leader>yp` | 复制当前 buffer 绝对路径到 `+` 和 `"` |
 | i | `<CR>` | 智能回车：已选中补全项时确认；否则正常换行；在 `{}` / `[]` / `()` 中间会自动拆行并对齐闭括号 |
 | n/x/i | `<M-h>` / `<M-l>` | 左移 / 右移当前行或选区缩进 |
+| n/x/i | `<M-Left>` / `<M-Right>` | 按单词向左 / 向右跳；insert 模式下跳完继续停留在插入模式 |
 | n/v | `H` | `^`（行首非空） |
 | n/v | `L` | `$`（行尾） |
 | v | `<` / `>` | 缩进并保持选区（`<gv` / `>gv`） |
