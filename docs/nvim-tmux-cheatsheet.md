@@ -82,7 +82,7 @@
 
 | 按键 | 操作 |
 |------|------|
-| `-` | **任意 buffer**：跳到当前文件所在目录的 oil 视图（Vinegar 风格） |
+| `-` | **任意普通 buffer**：跳到当前文件所在目录的 oil 视图；**terminal buffer 的 normal 模式**下按当前 shell cwd 打开 |
 | `-` | **在 oil 里**：回到上一级目录 |
 | `_` | 跳回 cwd |
 | `Enter` | 进入子目录 / 打开文件 |
@@ -135,6 +135,7 @@ browser 内（telescope 默认键）：
 | 按键 | 操作 |
 |------|------|
 | `Space yp` | 任意 buffer 里复制当前文件的**绝对路径** |
+| `Space t` | 在当前上下文目录开 terminal；如果当前 buffer 就是 terminal，会沿用该 shell 的 cwd |
 
 > 外部工具（如 Claude）改了文件，nvim 会在光标停 0.5 秒内自动重新加载并提示。
 

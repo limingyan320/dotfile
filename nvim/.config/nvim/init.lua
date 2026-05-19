@@ -293,6 +293,79 @@ local function toggle_window_zoom()
   vim.t.dotfiles_zoomed = true
 end
 
+local function process_cwd(pid)
+  if type(pid) ~= "number" or pid <= 0 then
+    return nil
+  end
+
+  local proc_cwd = uv.fs_realpath("/proc/" .. pid .. "/cwd")
+  if proc_cwd and vim.fn.isdirectory(proc_cwd) == 1 then
+    return proc_cwd
+  end
+
+  if vim.fn.executable("lsof") ~= 1 then
+    return nil
+  end
+
+  local lines = vim.fn.systemlist({ "lsof", "-a", "-d", "cwd", "-p", tostring(pid), "-Fn" })
+  if vim.v.shell_error ~= 0 then
+    return nil
+  end
+
+  for _, line in ipairs(lines) do
+    if vim.startswith(line, "n") then
+      local dir = line:sub(2)
+      if dir ~= "" and vim.fn.isdirectory(dir) == 1 then
+        return dir
+      end
+    end
+  end
+
+  return nil
+end
+
+local function terminal_buffer_cwd(bufnr)
+  if vim.bo[bufnr].buftype ~= "terminal" then
+    return nil
+  end
+
+  local pid = vim.b[bufnr].terminal_job_pid
+  if type(pid) ~= "number" or pid <= 0 then
+    return nil
+  end
+
+  return process_cwd(pid)
+end
+
+local function buffer_context_dir(bufnr)
+  bufnr = bufnr == 0 and vim.api.nvim_get_current_buf() or bufnr
+
+  local buf_name = vim.api.nvim_buf_get_name(bufnr)
+  if buf_name:match("^oil://") then
+    return buf_name:gsub("^oil://", "")
+  end
+
+  local term_dir = terminal_buffer_cwd(bufnr)
+  if term_dir then
+    return term_dir
+  end
+
+  if buf_name ~= "" then
+    return vim.fn.fnamemodify(buf_name, ":p:h")
+  end
+
+  return vim.fn.getcwd()
+end
+
+local function open_oil_from_context()
+  local dir = buffer_context_dir(0)
+  if not dir or vim.fn.isdirectory(dir) == 0 then
+    dir = vim.fn.getcwd()
+  end
+
+  vim.cmd("Oil " .. vim.fn.fnameescape(dir))
+end
+
 local function set_search_without_jump(pattern, forward)
   if not pattern or pattern == "" then
     return false
@@ -455,21 +528,13 @@ vim.api.nvim_create_autocmd({ "BufDelete", "BufUnload", "BufWipeout" }, {
 vim.opt.updatetime = 500
 
 vim.keymap.set("n", "<leader>t", function()
-  local buf_name = vim.api.nvim_buf_get_name(0)
-  local dir
-
-  if buf_name:match("^oil://") then
-    dir = buf_name:gsub("^oil://", "")
-  elseif buf_name ~= "" then
-    dir = vim.fn.fnamemodify(buf_name,":p:h")
-  end
-  
+  local dir = buffer_context_dir(0)
   if not dir or vim.fn.isdirectory(dir) == 0 then
     dir = vim.fn.getcwd()
   end
   vim.cmd("enew")
   vim.fn.termopen(vim.o.shell,{ cwd = dir })
-end, { desc = "Terminal in current file dir"})
+end, { desc = "Terminal in current context dir"})
 
 
 vim.opt.termguicolors = true
@@ -534,7 +599,7 @@ require("lazy").setup({
     dependencies = { "nvim-tree/nvim-web-devicons" },
     lazy = false, -- 需要在启动时接管目录打开（nvim .）
     keys = {
-      { "-", "<cmd>Oil<cr>", desc = "Open parent directory (oil)" },
+      { "-", open_oil_from_context, desc = "Open directory view (oil)" },
     },
     opts = {
       default_file_explorer = true,

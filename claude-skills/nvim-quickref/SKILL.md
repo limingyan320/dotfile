@@ -32,6 +32,7 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 | n | `<leader>vp` | toggle paste mode |
 | n | `<leader>z` | 像 tmux `prefix z` 一样临时放大当前窗口；再按一次恢复原分屏布局 |
 | n | `<leader>yp` | 复制当前 buffer 绝对路径到 `+` 和 `"` |
+| n | `<leader>t` | 在当前上下文目录开 terminal；若当前 buffer 是 terminal，则沿用该 shell cwd |
 | i | `<CR>` | 智能回车：已选中补全项时确认；否则正常换行；在 `{}` / `[]` / `()` 中间会自动拆行并对齐闭括号 |
 | n/x/i | `<M-h>` / `<M-l>` | 左移 / 右移当前行或选区缩进 |
 | n/x/i | `<M-Left>` / `<M-Right>` | 按单词向左 / 向右跳；insert 模式下跳完继续停留在插入模式 |
@@ -45,7 +46,7 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 
 ### `stevearc/oil.nvim` — 文件浏览（替代 netrw）
 - `lazy = false`（启动时要接管 `nvim <dir>` / `nvim .`）
-- `-` 打开父目录（全局）
+- `-`：普通 buffer 打开当前文件所在目录；terminal buffer 的 normal 模式下打开当前 shell cwd；oil buffer 内返回上一级
 - `<C-p>`（oil buffer 内自定义）：用 Telescope 搜索当前 oil 目录里的文件
 - `gy`（oil buffer 内自定义）：复制光标下 entry 的绝对路径到 `+` / `"`
 - `show_hidden = true`, `watch_for_changes = true`, `default_file_explorer = true`
