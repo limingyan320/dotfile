@@ -8,6 +8,16 @@ export PATH=$PATH:/usr/local/mysql/bin
 # --- 键位模式（emacs，确保 Ctrl+A/E 等行编辑快捷键正常工作）---
 bindkey -e
 
+# --- Option+Left/Right 按词移动 ---
+# iTerm2 / Terminal.app 常见会发送 xterm 风格的 Alt+Arrow 序列。
+# 显式绑定后，zsh 命令行和 nvim :terminal 里的 shell 都能按词跳转。
+for seq in $'\e[1;3D' $'\e[1;9D' $'\e\e[D'; do
+    bindkey "$seq" backward-word
+done
+for seq in $'\e[1;3C' $'\e[1;9C' $'\e\e[C'; do
+    bindkey "$seq" forward-word
+done
+
 # --- Zsh 补全 ---
 autoload -Uz compinit
 compinit

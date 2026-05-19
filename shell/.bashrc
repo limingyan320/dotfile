@@ -9,6 +9,15 @@ elif [ -f /usr/share/bash-completion/bash_completion ]; then
     . /usr/share/bash-completion/bash_completion
 fi
 
+# --- Option+Left/Right 按词移动 ---
+# 覆盖常见终端发送的 Alt+Arrow 序列，让 Bash/readline 直接按词跳转。
+bind '"\e[1;3D": backward-word'
+bind '"\e[1;9D": backward-word'
+bind '"\e\e[D": backward-word'
+bind '"\e[1;3C": forward-word'
+bind '"\e[1;9C": forward-word'
+bind '"\e\e[C": forward-word'
+
 # --- 终端颜色 ---
 export CLICOLOR=1
 alias ls='ls --color=auto'
