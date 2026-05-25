@@ -165,6 +165,6 @@ LSP 键位：
 2. **问到 nvim/tmux 常用操作**时，优先读 `~/.dotfiles/docs/nvim-tmux-cheatsheet.md`，再用本文件补充定制细节。
 3. **精确到代码**时读 init.lua：`~/.dotfiles/nvim/.config/nvim/init.lua`。
 4. **init.lua 改了之后**，提醒用户同步更新：
-   - 本文件（`~/.dotfiles/skills/nvim-quickref/SKILL.md`）
+   - 本文件（`~/.dotfiles/codex-skills/nvim-quickref/SKILL.md`）
    - Claude skill（`~/.dotfiles/claude-skills/nvim-quickref/SKILL.md`）
    - `~/.dotfiles/docs/nvim-tmux-cheatsheet.md`（通用 vim/tmux 操作速查）
