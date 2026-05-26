@@ -139,18 +139,31 @@ case "$PKG_MANAGER" in
                 rm -f "$TMP_DEB"
             fi
         fi
-        # neovim：优先 AppImage，避免 apt 仓库太旧
-        if command -v nvim &>/dev/null && nvim --version | head -1 | awk '{print $2}' | grep -qE '^v?(0\.(9|[1-9][0-9])|[1-9])'; then
-            warn "neovim $(nvim --version | head -1) 已满足版本要求，跳过"
+        # neovim：按 CPU 架构下载 AppImage，避免 apt 仓库太旧
+        NVIM_VERSION_LINE="$(nvim --version 2>/dev/null | head -1 || true)"
+        if [ -n "$NVIM_VERSION_LINE" ] && printf '%s\n' "$NVIM_VERSION_LINE" | awk '{print $2}' | grep -qE '^v?(0\.(9|[1-9][0-9])|[1-9])'; then
+            warn "neovim $NVIM_VERSION_LINE 已满足版本要求，跳过"
         else
-            info "正在下载 Neovim AppImage 到 ~/.local/bin/nvim（apt 仓库版本太旧，本配置需要 ≥0.9）..."
-            mkdir -p "$HOME/.local/bin"
-            if curl -fsSL https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.appimage -o "$HOME/.local/bin/nvim"; then
-                chmod +x "$HOME/.local/bin/nvim"
-                info "Neovim AppImage 安装完成（确保 ~/.local/bin 在 PATH 中）"
+            ARCH="$(dpkg --print-architecture 2>/dev/null || uname -m)"
+            case "$ARCH" in
+                amd64|x86_64) NVIM_ARCH="x86_64" ;;
+                arm64|aarch64) NVIM_ARCH="arm64" ;;
+                *) NVIM_ARCH="" ;;
+            esac
+            if [ -z "$NVIM_ARCH" ]; then
+                warn "不支持的架构 $ARCH，跳过 Neovim AppImage；可尝试 sudo apt install neovim"
             else
-                warn "Neovim AppImage 下载失败（网络/代理问题），请稍后手动安装："
-                warn "  curl -fsSL https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.appimage -o ~/.local/bin/nvim && chmod +x ~/.local/bin/nvim"
+                NVIM_URL="https://github.com/neovim/neovim/releases/latest/download/nvim-linux-${NVIM_ARCH}.appimage"
+                TMP_NVIM="$(mktemp)"
+                info "正在下载 Neovim ${NVIM_ARCH} AppImage 到 ~/.local/bin/nvim（本配置需要 ≥0.9）..."
+                mkdir -p "$HOME/.local/bin"
+                if curl -fsSL "$NVIM_URL" -o "$TMP_NVIM" && chmod +x "$TMP_NVIM" && mv "$TMP_NVIM" "$HOME/.local/bin/nvim"; then
+                    info "Neovim AppImage 安装完成（确保 ~/.local/bin 在 PATH 中）"
+                else
+                    warn "Neovim AppImage 下载/安装失败（网络/代理问题），请稍后手动安装："
+                    warn "  curl -fsSL $NVIM_URL -o ~/.local/bin/nvim && chmod +x ~/.local/bin/nvim"
+                fi
+                rm -f "$TMP_NVIM"
             fi
         fi
         ;;
