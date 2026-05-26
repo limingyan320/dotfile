@@ -174,6 +174,48 @@ case "$PKG_MANAGER" in
         ;;
 esac
 
+echo "--- 安装 Neovim Treesitter 依赖 ---"
+echo ""
+
+if tree-sitter --version &>/dev/null; then
+    warn "tree-sitter CLI 已安装，跳过"
+elif command -v npm &>/dev/null; then
+    info "正在通过 npm 安装 tree-sitter-cli（nvim-treesitter 编译 parser 需要）..."
+    if npm install -g tree-sitter-cli; then
+        info "tree-sitter CLI 安装完成"
+    else
+        warn "tree-sitter-cli npm 安装失败，nvim-treesitter parser 自动安装可能会报错"
+    fi
+else
+    case "$PKG_MANAGER" in
+        brew)
+            info "正在安装 tree-sitter..."
+            brew install tree-sitter || warn "tree-sitter 安装失败，nvim-treesitter parser 自动安装可能会报错"
+            ;;
+        rpm-ostree)
+            info "正在通过 rpm-ostree 安装 tree-sitter-cli..."
+            if sudo rpm-ostree install --idempotent tree-sitter-cli; then
+                sudo rpm-ostree apply-live 2>/dev/null || warn "apply-live 失败，需要重启后生效: sudo systemctl reboot"
+            else
+                warn "tree-sitter-cli 安装失败，nvim-treesitter parser 自动安装可能会报错"
+            fi
+            ;;
+        dnf)
+            info "正在安装 tree-sitter-cli..."
+            sudo dnf install -y tree-sitter-cli || warn "tree-sitter-cli 安装失败，nvim-treesitter parser 自动安装可能会报错"
+            ;;
+        apt)
+            info "正在安装 tree-sitter-cli..."
+            sudo apt install -y tree-sitter-cli || warn "tree-sitter-cli 安装失败，nvim-treesitter parser 自动安装可能会报错"
+            ;;
+        *)
+            warn "未找到 npm 或可用包管理器，请手动安装 tree-sitter-cli"
+            ;;
+    esac
+fi
+
+echo ""
+
 # 第 2.5 步,安装 Starship
 echo "---安装 Starship---"
 echo ""
