@@ -334,7 +334,11 @@ link_file "$DOTFILES/starship/starship.toml"     "$HOME/.config/starship.toml"
 link_file "$DOTFILES/fastfetch/config.jsonc"     "$HOME/.config/fastfetch/config.jsonc"
 link_file "$DOTFILES/fastfetch/logos"            "$HOME/.config/fastfetch/logos"
 link_file "$DOTFILES/fastfetch/presets"          "$HOME/.config/fastfetch/presets"
-link_file "$DOTFILES/claude-skills/nvim-quickref" "$HOME/.claude/skills/nvim-quickref"
+for skill_dir in "$DOTFILES"/claude-skills/*; do
+    [ -d "$skill_dir" ] || continue
+    skill_name="$(basename "$skill_dir")"
+    link_file "$skill_dir" "$HOME/.claude/skills/$skill_name"
+done
 for skill_dir in "$DOTFILES"/codex-skills/*; do
     [ -d "$skill_dir" ] || continue
     skill_name="$(basename "$skill_dir")"
