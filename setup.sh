@@ -46,6 +46,46 @@ echo ""
 echo "检测到平台: $PLATFORM"
 
 # ============================================
+# 第 1.5 步：可选代理（仅对本脚本进程生效，不写任何全局/系统配置）
+# ============================================
+# 通过 export http(s)_proxy 给本脚本的子进程（curl/git/npm/brew 及管道安装脚本）用，
+# 脚本退出即失效，绝不影响全局环境。http 与 https 共用同一个代理，不做区分。
+# 注意：经 sudo 调用的包管理器（apt/dnf）默认会丢弃这些环境变量，不受此代理影响。
+echo ""
+echo "--- 代理设置 ---"
+echo "本脚本会从 GitHub 等境外站点下载内容。"
+echo "如需走代理，输入 ip:端口（例如 127.0.0.1:7890），直接回车跳过："
+printf "代理 (ip:端口): "
+PROXY_INPUT=""
+if [ -r /dev/tty ]; then
+    read -r PROXY_INPUT < /dev/tty
+else
+    read -r PROXY_INPUT
+fi
+
+enable_proxy() {
+    local addr="$1"
+    # 容错：去掉用户可能误带的协议前缀和首尾空白
+    addr="${addr#http://}"; addr="${addr#https://}"; addr="${addr#socks5://}"
+    addr="${addr## }"; addr="${addr%% }"
+    local url="http://$addr"
+    info "测试代理 $addr 是否可达..."
+    if curl -fsS --connect-timeout 6 --proxy "$url" -o /dev/null https://github.com 2>/dev/null; then
+        export http_proxy="$url"  https_proxy="$url"  all_proxy="$url"
+        export HTTP_PROXY="$url"  HTTPS_PROXY="$url"  ALL_PROXY="$url"
+        info "代理可用，已为本次安装启用 $addr（http/https 通用，仅本进程，不影响全局）"
+    else
+        warn "代理 $addr 不可达，回退到直连（不使用代理）"
+    fi
+}
+
+if [ -n "$PROXY_INPUT" ]; then
+    enable_proxy "$PROXY_INPUT"
+else
+    info "未设置代理，直连下载"
+fi
+
+# ============================================
 # 第二步：检测包管理器并安装软件
 # ============================================
 detect_pkg_manager() {
