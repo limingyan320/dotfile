@@ -22,6 +22,7 @@ codex-notifications/ <- Codex 原生 notify 配置；macOS 使用仓库内 Swift
 claude-notifications/<- claude-notifications-go 插件的自定义资源（音效/图标/标题），apply.sh 合并进 ~/.claude/claude-notifications-go/config.json
 claude-skills/       <- Claude Code 用户级 skill（如 nvim-quickref），setup.sh 把每个子目录链到 ~/.claude/skills/
 codex-skills/        <- Codex 专用 skill（如 nvim-quickref），setup.sh 把每个子目录链到 ~/.codex/skills/
+iterm2-imgpaste/     <- (macOS) iTerm2 快捷键把 Mac 剪贴板图片 push 到远端 SSH 会话、以 bracketed paste 注入 agent 输入框；setup.sh 调 install.sh 把 daemon 链到 iTerm2 AutoLaunch
 setup.sh             <- 一键安装/同步脚本，自动检测包管理器 (brew/rpm-ostree/dnf/apt) 和平台，重跑安全
 ```
 

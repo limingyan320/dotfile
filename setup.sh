@@ -450,4 +450,18 @@ else
 fi
 
 echo ""
+
+# ============================================
+# iTerm2 剪贴板图片 → 远端 agent(iclip)
+# ============================================
+echo "--- iTerm2 图片粘贴(iclip)---"
+echo ""
+
+if [ "$PLATFORM" = "macos" ]; then
+    bash "$DOTFILES/iterm2-imgpaste/install.sh" || warn "iclip install.sh 有异常退出码，但已尽力处理"
+else
+    warn "iclip 的 Mac 侧 daemon 只装在 macOS；Linux 仅作被推送端（push 时自动建 ~/.cache/iclip），无需配置"
+fi
+
+echo ""
 echo "安装完成!"
