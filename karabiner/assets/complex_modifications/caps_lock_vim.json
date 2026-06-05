@@ -1,0 +1,156 @@
+{
+  "title": "Caps Lock Vim Mode (Right Shift Sprint)",
+  "rules": [
+    {
+      "description": "Caps Lock Layer (Hold = Vim/Mouse, Tap = Esc)",
+      "manipulators": [
+        {
+          "type": "basic",
+          "description": "Caps Lock Logic",
+          "from": { "key_code": "caps_lock", "modifiers": { "optional": ["any"] } },
+          "to": [ { "set_variable": { "name": "vim_mode", "value": 1 } } ],
+          "to_after_key_up": [ { "set_variable": { "name": "vim_mode", "value": 0 } } ],
+          "to_if_alone": [ { "key_code": "escape" } ]
+        },
+
+        
+        {
+          "type": "basic",
+          "description": "Right Shift + W -> Fast Up",
+          "from": { "key_code": "w", "modifiers": { "mandatory": ["right_shift"] } },
+          "to": [ { "mouse_key": { "y": -4500 } } ],
+          "conditions": [ { "type": "variable_if", "name": "vim_mode", "value": 1 } ]
+        },
+        {
+          "type": "basic",
+          "description": "Option + W -> Slow Up (Precision)",
+          "from": { "key_code": "w", "modifiers": { "mandatory": ["left_option"] } },
+          "to": [ { "mouse_key": { "y": -300 } } ],
+          "conditions": [ { "type": "variable_if", "name": "vim_mode", "value": 1 } ]
+        },
+        {
+          "type": "basic",
+          "description": "W -> Normal Up",
+          "from": { "key_code": "w", "modifiers": { "optional": ["any"] } },
+          "to": [ { "mouse_key": { "y": -750 } } ],
+          "conditions": [ { "type": "variable_if", "name": "vim_mode", "value": 1 } ]
+        },
+
+        
+        {
+          "type": "basic",
+          "description": "Right Shift + S -> Fast Down",
+          "from": { "key_code": "s", "modifiers": { "mandatory": ["right_shift"] } },
+          "to": [ { "mouse_key": { "y": 4500 } } ],
+          "conditions": [ { "type": "variable_if", "name": "vim_mode", "value": 1 } ]
+        },
+        {
+          "type": "basic",
+          "description": "Option + S -> Slow Down (Precision)",
+          "from": { "key_code": "s", "modifiers": { "mandatory": ["left_option"] } },
+          "to": [ { "mouse_key": { "y": 300 } } ],
+          "conditions": [ { "type": "variable_if", "name": "vim_mode", "value": 1 } ]
+        },
+        {
+          "type": "basic",
+          "description": "S -> Normal Down",
+          "from": { "key_code": "s", "modifiers": { "optional": ["any"] } },
+          "to": [ { "mouse_key": { "y": 750 } } ],
+          "conditions": [ { "type": "variable_if", "name": "vim_mode", "value": 1 } ]
+        },
+
+        
+        {
+          "type": "basic",
+          "description": "Right Shift + A -> Fast Left",
+          "from": { "key_code": "a", "modifiers": { "mandatory": ["right_shift"] } },
+          "to": [ { "mouse_key": { "x": -4500 } } ],
+          "conditions": [ { "type": "variable_if", "name": "vim_mode", "value": 1 } ]
+        },
+        {
+          "type": "basic",
+          "description": "Option + A -> Slow Left (Precision)",
+          "from": { "key_code": "a", "modifiers": { "mandatory": ["left_option"] } },
+          "to": [ { "mouse_key": { "x": -300 } } ],
+          "conditions": [ { "type": "variable_if", "name": "vim_mode", "value": 1 } ]
+        },
+        {
+          "type": "basic",
+          "description": "A -> Normal Left",
+          "from": { "key_code": "a", "modifiers": { "optional": ["any"] } },
+          "to": [ { "mouse_key": { "x": -750 } } ],
+          "conditions": [ { "type": "variable_if", "name": "vim_mode", "value": 1 } ]
+        },
+
+        
+        {
+          "type": "basic",
+          "description": "Right Shift + D -> Fast Right",
+          "from": { "key_code": "d", "modifiers": { "mandatory": ["right_shift"] } },
+          "to": [ { "mouse_key": { "x": 4500 } } ],
+          "conditions": [ { "type": "variable_if", "name": "vim_mode", "value": 1 } ]
+        },
+        {
+          "type": "basic",
+          "description": "Option + D -> Slow Right (Precision)",
+          "from": { "key_code": "d", "modifiers": { "mandatory": ["left_option"] } },
+          "to": [ { "mouse_key": { "x": 300 } } ],
+          "conditions": [ { "type": "variable_if", "name": "vim_mode", "value": 1 } ]
+        },
+        {
+          "type": "basic",
+          "description": "D -> Normal Right",
+          "from": { "key_code": "d", "modifiers": { "optional": ["any"] } },
+          "to": [ { "mouse_key": { "x": 750 } } ],
+          "conditions": [ { "type": "variable_if", "name": "vim_mode", "value": 1 } ]
+        },
+
+        
+        {
+          "type": "basic",
+          "description": "Space -> Left Click",
+          "from": { "key_code": "spacebar", "modifiers": { "optional": ["any"] } },
+          "to": [ { "pointing_button": "button1" } ],
+          "conditions": [ { "type": "variable_if", "name": "vim_mode", "value": 1 } ]
+        },
+        {
+          "type": "basic",
+          "description": "Enter -> Right Click",
+          "from": { "key_code": "return_or_enter", "modifiers": { "optional": ["any"] } },
+          "to": [ { "pointing_button": "button2" } ],
+          "conditions": [ { "type": "variable_if", "name": "vim_mode", "value": 1 } ]
+        },
+
+        
+        {
+          "type": "basic",
+          "description": "H -> Left Arrow",
+          "from": { "key_code": "h", "modifiers": { "optional": ["any"] } },
+          "to": [ { "key_code": "left_arrow" } ],
+          "conditions": [ { "type": "variable_if", "name": "vim_mode", "value": 1 } ]
+        },
+        {
+          "type": "basic",
+          "description": "J -> Down Arrow",
+          "from": { "key_code": "j", "modifiers": { "optional": ["any"] } },
+          "to": [ { "key_code": "down_arrow" } ],
+          "conditions": [ { "type": "variable_if", "name": "vim_mode", "value": 1 } ]
+        },
+        {
+          "type": "basic",
+          "description": "K -> Up Arrow",
+          "from": { "key_code": "k", "modifiers": { "optional": ["any"] } },
+          "to": [ { "key_code": "up_arrow" } ],
+          "conditions": [ { "type": "variable_if", "name": "vim_mode", "value": 1 } ]
+        },
+        {
+          "type": "basic",
+          "description": "L -> Right Arrow",
+          "from": { "key_code": "l", "modifiers": { "optional": ["any"] } },
+          "to": [ { "key_code": "right_arrow" } ],
+          "conditions": [ { "type": "variable_if", "name": "vim_mode", "value": 1 } ]
+        }
+      ]
+    }
+  ]
+}

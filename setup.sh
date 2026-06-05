@@ -388,6 +388,9 @@ done
 # --- 平台专属链接 ---
 if [ "$PLATFORM" = "macos" ]; then
     link_file "$DOTFILES/shell/.zshrc"           "$HOME/.zshrc"
+    # Karabiner 必须链接整个目录而不是单个 json：GUI 保存时是"写临时文件再替换"，
+    # 链接单文件会被替换成普通文件，目录级链接则不受影响
+    link_file "$DOTFILES/karabiner"              "$HOME/.config/karabiner"
 elif [ "$PLATFORM" = "linux" ]; then
     link_file "$DOTFILES/shell/.bash_profile"    "$HOME/.bash_profile"
     link_file "$DOTFILES/shell/.bashrc"          "$HOME/.bashrc"

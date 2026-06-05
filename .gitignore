@@ -5,6 +5,9 @@
 .claude/
 *.backup.*
 
+# Karabiner GUI 自动生成的备份，不进 git
+karabiner/automatic_backups/
+
 # OS
 .DS_Store
 
