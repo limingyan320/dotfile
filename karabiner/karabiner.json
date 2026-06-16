@@ -501,6 +501,16 @@
                         "description": "左Shift切英文，右Shift切中文",
                         "manipulators": [
                             {
+                                "conditions": [
+                                    {
+                                        "input_sources": [
+                                            {
+                                                "language": "^en$"
+                                            }
+                                        ],
+                                        "type": "input_source_unless"
+                                    }
+                                ],
                                 "from": {
                                     "key_code": "left_shift",
                                     "modifiers": {
@@ -517,13 +527,24 @@
                                 "to_if_alone": [
                                     {
                                         "select_input_source": {
-                                            "language": "^en$"
+                                            "input_source_id": "^com\\.apple\\.keylayout\\.ABC$"
                                         }
                                     }
                                 ],
                                 "type": "basic"
                             },
                             {
+                                "conditions": [
+                                    {
+                                        "input_sources": [
+                                            {
+                                                "input_mode_id": "^com\\.apple\\.inputmethod\\.SCIM\\.ITABC$",
+                                                "language": "^zh-Hans$"
+                                            }
+                                        ],
+                                        "type": "input_source_unless"
+                                    }
+                                ],
                                 "from": {
                                     "key_code": "right_shift",
                                     "modifiers": {
@@ -539,9 +560,10 @@
                                 ],
                                 "to_if_alone": [
                                     {
-                                        "select_input_source": {
-                                            "language": "^zh-Hans$"
-                                        }
+                                        "key_code": "spacebar",
+                                        "modifiers": [
+                                            "left_control"
+                                        ]
                                     }
                                 ],
                                 "type": "basic"
