@@ -27,6 +27,13 @@ vim.opt.smartcase = true
 vim.opt.foldenable = true
 vim.opt.foldlevel = 99
 vim.opt.foldlevelstart = 99
+vim.opt.scroll = 6
+vim.opt.scrolloff = 6
+vim.opt.sidescrolloff = 8
+vim.opt.mousescroll = "ver:2,hor:6"
+vim.opt.smoothscroll = true
+
+local view_scroll_lines = 6
 
 local treesitter_languages = {
   "lua",
@@ -427,6 +434,17 @@ end, { desc = "Search word without jumping first" })
 vim.keymap.set("n", "#", function()
   cword_search(false)
 end, { desc = "Search word backward without jumping first" })
+
+local function scroll_view(key)
+  return function()
+    local count = vim.v.count > 0 and vim.v.count or view_scroll_lines
+    local keys = vim.api.nvim_replace_termcodes(tostring(count) .. key, true, false, true)
+    vim.api.nvim_feedkeys(keys, "n", false)
+  end
+end
+
+vim.keymap.set("n", "<C-d>", scroll_view("<C-e>"), { desc = "Scroll view down" })
+vim.keymap.set("n", "<C-u>", scroll_view("<C-y>"), { desc = "Scroll view up" })
 
 local external_change_group = vim.api.nvim_create_augroup("DotfilesExternalChanges", { clear = true })
 local file_watchers = {}
