@@ -32,8 +32,11 @@ vim.opt.scrolloff = 6
 vim.opt.sidescrolloff = 8
 vim.opt.mousescroll = "ver:2,hor:6"
 vim.opt.smoothscroll = true
+vim.opt.guicursor = "n-v-c-sm:block,i-ci-ve:ver25,r-cr-o:hor20,t:block-TermCursor"
 
 local view_scroll_lines = 6
+local terminal_cursor_bg = "#ffd866"
+local terminal_cursor_fg = "#1a1b26"
 
 local treesitter_languages = {
   "lua",
@@ -545,15 +548,120 @@ vim.api.nvim_create_autocmd({ "BufDelete", "BufUnload", "BufWipeout" }, {
 -- 缩短 CursorHold 触发间隔（默认 4000ms），让外部改动几乎即时可见
 vim.opt.updatetime = 500
 
-vim.keymap.set("n", "<leader>t", function()
+local function open_full_terminal()
   local dir = buffer_context_dir(0)
   if not dir or vim.fn.isdirectory(dir) == 0 then
     dir = vim.fn.getcwd()
   end
-  vim.cmd("enew")
-  vim.fn.termopen(vim.o.shell,{ cwd = dir })
-end, { desc = "Terminal in current context dir"})
 
+  vim.cmd("enew")
+  vim.fn.termopen(vim.o.shell, { cwd = dir })
+  vim.schedule(function()
+    if vim.bo.buftype == "terminal" then
+      vim.cmd("startinsert")
+    end
+  end)
+end
+
+vim.keymap.set("n", "<leader>t", open_full_terminal, { desc = "Terminal in current context dir" })
+
+local terminal_panel = {
+  buf = nil,
+  win = nil,
+  height = 12,
+  default_height = 12,
+  min_height = 5,
+  step = 2,
+}
+
+local function terminal_panel_job_running(bufnr)
+  if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
+    return false
+  end
+
+  local job_id = vim.b[bufnr].terminal_job_id
+  return type(job_id) == "number" and vim.fn.jobwait({ job_id }, 0)[1] == -1
+end
+
+local function open_terminal_panel()
+  local dir = buffer_context_dir(0)
+  if not dir or vim.fn.isdirectory(dir) == 0 then
+    dir = vim.fn.getcwd()
+  end
+
+  vim.cmd("botright " .. terminal_panel.height .. "split")
+  terminal_panel.win = vim.api.nvim_get_current_win()
+  vim.wo[terminal_panel.win].winfixheight = true
+  vim.wo[terminal_panel.win].number = false
+  vim.wo[terminal_panel.win].relativenumber = false
+  vim.wo[terminal_panel.win].signcolumn = "no"
+
+  if terminal_panel_job_running(terminal_panel.buf) then
+    vim.api.nvim_win_set_buf(terminal_panel.win, terminal_panel.buf)
+  else
+    vim.cmd("enew")
+    terminal_panel.buf = vim.api.nvim_get_current_buf()
+    vim.bo[terminal_panel.buf].buflisted = false
+    vim.bo[terminal_panel.buf].bufhidden = "hide"
+    vim.fn.termopen(vim.o.shell, { cwd = dir })
+  end
+
+  vim.schedule(function()
+    if vim.api.nvim_win_is_valid(terminal_panel.win) then
+      vim.api.nvim_set_current_win(terminal_panel.win)
+      vim.cmd("startinsert")
+    end
+  end)
+end
+
+local function terminal_panel_max_height()
+  local screen_cap = math.max(terminal_panel.min_height, vim.o.lines - 5)
+  return math.min(screen_cap, math.max(terminal_panel.min_height, math.floor(vim.o.lines * 0.7)))
+end
+
+local function set_terminal_panel_height(height)
+  terminal_panel.height = math.max(terminal_panel.min_height, math.min(terminal_panel_max_height(), height))
+
+  if terminal_panel.win and vim.api.nvim_win_is_valid(terminal_panel.win) then
+    vim.api.nvim_win_set_height(terminal_panel.win, terminal_panel.height)
+    vim.wo[terminal_panel.win].winfixheight = true
+  end
+end
+
+local function resize_terminal_panel(delta)
+  set_terminal_panel_height(terminal_panel.height + delta)
+end
+
+local function reset_terminal_panel_height()
+  set_terminal_panel_height(terminal_panel.default_height)
+end
+
+local function toggle_terminal_panel()
+  if terminal_panel.win and vim.api.nvim_win_is_valid(terminal_panel.win) then
+    vim.api.nvim_win_close(terminal_panel.win, false)
+    terminal_panel.win = nil
+    return
+  end
+
+  open_terminal_panel()
+end
+
+for _, key in ipairs({ "<C-/>", "<C-_>" }) do
+  vim.keymap.set({ "n", "i" }, key, toggle_terminal_panel, { desc = "Toggle terminal panel" })
+  vim.keymap.set("t", key, function()
+    vim.cmd("stopinsert")
+    vim.schedule(toggle_terminal_panel)
+  end, { desc = "Toggle terminal panel" })
+end
+for _, key in ipairs({ "<M-+>", "<M-=>" }) do
+  vim.keymap.set({ "n", "i", "t" }, key, function()
+    resize_terminal_panel(terminal_panel.step)
+  end, { desc = "Increase terminal panel height" })
+end
+vim.keymap.set({ "n", "i", "t" }, "<M-->", function()
+  resize_terminal_panel(-terminal_panel.step)
+end, { desc = "Decrease terminal panel height" })
+vim.keymap.set({ "n", "i", "t" }, "<M-0>", reset_terminal_panel_height, { desc = "Reset terminal panel height" })
 
 vim.opt.termguicolors = true
 
@@ -568,6 +676,11 @@ vim.keymap.set({ "n", "x" }, "<M-Left>", "b", { desc = "Back word" })
 vim.keymap.set({ "n", "x" }, "<M-Right>", "e", { desc = "Forward word end" })
 vim.keymap.set("i", "<M-Left>", "<C-o>b", { desc = "Back word" })
 vim.keymap.set("i", "<M-Right>", "<C-o>e", { desc = "Forward word end" })
+vim.keymap.set("n", "<C-n>", "<cmd>enew<CR>", { desc = "New scratch buffer" })
+
+vim.keymap.set("i", "<C-a>", "<C-o>^", { desc = "Line start nonblank" })
+vim.keymap.set("i", "<C-e>", "<C-o>$", { desc = "Line end" })
+
 vim.keymap.set("i", "<M-h>", function()
   shift_current_line(-1)
   vim.schedule(function()
@@ -581,13 +694,74 @@ vim.keymap.set("i", "<M-l>", function()
   end)
 end, { desc = "Indent right" })
 
+local function blank_line(bufnr, lnum)
+  local line = vim.api.nvim_buf_get_lines(bufnr, lnum - 1, lnum, false)[1] or ""
+  return line:match("^%s*$") ~= nil
+end
+
+local function first_nonblank_col(bufnr, lnum)
+  local line = vim.api.nvim_buf_get_lines(bufnr, lnum - 1, lnum, false)[1] or ""
+  local idx = line:find("%S")
+  return idx and idx - 1 or 0
+end
+
+local function adjacent_text_block_start(bufnr, lnum, direction)
+  local last = vim.api.nvim_buf_line_count(bufnr)
+  local cur = lnum
+
+  if direction > 0 then
+    while cur <= last and not blank_line(bufnr, cur) do
+      cur = cur + 1
+    end
+    while cur <= last and blank_line(bufnr, cur) do
+      cur = cur + 1
+    end
+    return cur <= last and cur or nil
+  end
+
+  while cur >= 1 and not blank_line(bufnr, cur) do
+    cur = cur - 1
+  end
+  while cur >= 1 and blank_line(bufnr, cur) do
+    cur = cur - 1
+  end
+  if cur < 1 then
+    return nil
+  end
+  while cur >= 1 and not blank_line(bufnr, cur) do
+    cur = cur - 1
+  end
+  return cur + 1
+end
+
+local function move_text_block(direction)
+  local bufnr = vim.api.nvim_get_current_buf()
+  local target = vim.api.nvim_win_get_cursor(0)[1]
+
+  for _ = 1, vim.v.count1 do
+    local next_target = adjacent_text_block_start(bufnr, target, direction)
+    if not next_target then
+      break
+    end
+    target = next_target
+  end
+
+  vim.api.nvim_win_set_cursor(0, { target, first_nonblank_col(bufnr, target) })
+end
+
 -- H/L 快速跳转行首行尾（原始 0/$ 仍可用）
 vim.keymap.set({ "n", "v" }, "H", "^")
 vim.keymap.set({ "n", "v" }, "L", "$")
+vim.keymap.set({ "n", "x" }, "J", function()
+  move_text_block(1)
+end, { desc = "Move to next text block" })
+vim.keymap.set({ "n", "x" }, "K", function()
+  move_text_block(-1)
+end, { desc = "Move to previous text block" })
 
-vim.keymap.set("v", "(", "sa(", { remap = true })
-vim.keymap.set("v", "[", "sa[", { remap = true })
-vim.keymap.set("v", "{", "sa{", { remap = true })
+vim.keymap.set("v", "(", "sa)", { remap = true })
+vim.keymap.set("v", "[", "sa]", { remap = true })
+vim.keymap.set("v", "{", "sa}", { remap = true })
 vim.keymap.set("v", "'", "sa'", { remap = true })
 vim.keymap.set("v", '"', 'sa"', { remap = true })
 vim.keymap.set("v", "`", "sa`", { remap = true })
@@ -689,6 +863,8 @@ require("lazy").setup({
     priority = 1000,
     config = function()
       vim.cmd.colorscheme("tokyonight")
+      vim.api.nvim_set_hl(0, "TermCursor", { fg = terminal_cursor_fg, bg = terminal_cursor_bg, bold = true })
+      vim.api.nvim_set_hl(0, "TermCursorNC", { fg = terminal_cursor_fg, bg = "#e0af68" })
     end,
   },
   {
@@ -721,8 +897,8 @@ require("lazy").setup({
     event = "VeryLazy",
     opts = {
       options = {
-        section_separators = { left = "", right = "" },
-        component_separators = { left = "", right = "" },
+        section_separators = { left = "", right = "" },
+        component_separators = { left = "", right = "" },
       },
     },
   },
@@ -975,7 +1151,7 @@ require("lazy").setup({
     keys = {
       { "gd", vim.lsp.buf.definition, desc = "Go to definition" },
       { "gr", vim.lsp.buf.references, desc = "References" },
-      { "K", vim.lsp.buf.hover, desc = "Hover" },
+      { "<leader>k", vim.lsp.buf.hover, desc = "Hover" },
       { "<leader>rn", vim.lsp.buf.rename, desc = "Rename" },
       { "<leader>ca", vim.lsp.buf.code_action, desc = "Code action" },
       { "[d", vim.diagnostic.goto_prev, desc = "Prev diagnostic" },

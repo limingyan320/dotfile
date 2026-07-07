@@ -407,6 +407,18 @@ fi
 echo ""
 
 # ============================================
+# Raycast 配置迁移
+# ============================================
+if [ "$PLATFORM" = "macos" ]; then
+    echo "--- Raycast 配置迁移 ---"
+    echo ""
+    warn "Raycast hotkeys / aliases / preferences 不由 setup.sh 自动导入"
+    echo "  如需迁移 m4 Raycast extension 快捷键，请在 Raycast 里手动运行 Import Settings & Data"
+    echo "  并导入私下保存的 .rayconfig；详细步骤见 $DOTFILES/raycast/README.md"
+    echo ""
+fi
+
+# ============================================
 # Codex CLI 通知
 # ============================================
 echo "--- Codex CLI 通知 ---"

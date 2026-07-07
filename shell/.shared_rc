@@ -24,6 +24,22 @@ if [[ $- == *i* ]]; then
     alias g='nvitop'
     alias v5='ssh -N -D 192.168.100.160:1080 administrator@192.168.100.127'
 
+    c() {
+        if [ "$#" -gt 0 ]; then
+            cat "$@"
+        else
+            cat
+        fi | base64 | tr -d '\n' | awk '{ printf "\033]1337;Copy=:%s\a", $0 }'
+    }
+
+    cb() {
+        c "$@"
+    }
+
+    it2copy() {
+        c "$@"
+    }
+
     __dotfiles_fastfetch_default_profile() {
         local system
         system="$(uname -s 2>/dev/null)"
@@ -122,14 +138,17 @@ if [[ $- == *i* ]]; then
 
     ff() {
         __dotfiles_fastfetch_run "$@"
+        local rc=$?
+        [ -t 1 ] && printf '\033[?25h'
+        return "$rc"
     }
 
     fffinger() {
-        DOTFILES_FASTFETCH_PROFILE="finger" __dotfiles_fastfetch_run "$@"
+        DOTFILES_FASTFETCH_PROFILE="finger" ff "$@"
     }
 
     ffobito() {
-        DOTFILES_FASTFETCH_PROFILE="obito-kamui" __dotfiles_fastfetch_run "$@"
+        DOTFILES_FASTFETCH_PROFILE="obito-kamui" ff "$@"
     }
 
     ffprofiles() {
@@ -398,4 +417,8 @@ if [[ $- == *i* ]] && [ "$(uname -s 2>/dev/null)" = "Darwin" ] && [ -z "${SSH_CO
             command ssh "$@"
         fi
     }
+fi
+
+if command -v brew >/dev/null 2>&1; then
+    export PATH="$(brew --prefix libpq)/bin:$PATH"
 fi

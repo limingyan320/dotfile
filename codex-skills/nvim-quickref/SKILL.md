@@ -23,6 +23,7 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 - `clipboard = unnamedplus`；检测到 `$SSH_TTY` / `$SSH_CONNECTION` / `$XDG_SESSION_TYPE=tty` 时自动切到 **OSC 52**（走终端剪贴板，需要 iTerm2/WezTerm/kitty 等允许剪贴板访问，tmux 需 `set-clipboard on`）
 - `autoread` + `updatetime = 500`（缩短 `CursorHold` 触发间隔让外部改动近实时可见）
 - 外部改动侦测：`FocusGained` / `BufEnter` / `CursorHold{,I}` / `TermLeave` 主动 `checktime`；每个文件 buffer 还会跑一个 `uv.new_fs_event` watcher，被外部改动后弹 WARN `文件被外部修改，已重新加载`
+- terminal mode 使用不闪烁的黄色实心块光标；`<leader>t` 打开完整 terminal buffer；`<C-/>` / `<C-_>` 切换底部 terminal 面板，隐藏时保留 shell 状态
 - netrw 禁用（`vim.g.loaded_netrw = 1`），文件浏览全走 oil
 
 ## 自定义键位（非插件）
@@ -33,16 +34,20 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 | n | `<leader>vp` | toggle paste mode |
 | n | `<leader>z` | 像 tmux `prefix z` 一样临时放大当前窗口；再按一次恢复原分屏布局 |
 | n | `<leader>yp` | 复制当前 buffer 绝对路径到 `+` 和 `"` |
-| n | `<leader>t` | 在当前上下文目录开 terminal；若当前 buffer 是 terminal，则沿用该 shell cwd |
+| n | `<leader>t` | 在当前上下文目录开完整 terminal buffer 并直接进入输入；若当前 buffer 是 terminal，则沿用该 shell cwd |
+| n/i/t | `<C-/>` / `<C-_>` | toggle 底部 terminal 面板；首次打开按当前上下文目录启动 shell，隐藏时保留 shell 状态 |
+| n/i/t | `<M-+>` / `<M-->` / `<M-0>` | 增高 / 降低 / 重置底部 terminal 面板高度；`<M-=>` 也会增高 |
 | n | `<C-d>` / `<C-u>` | 视图下/上滚 6 行，光标尽量留在原位置；可用 `10<C-d>` / `10<C-u>` 临时指定行数 |
 | n | `<C-e>` / `<C-y>` | 原生微滚：视图下/上滚 1 行 |
 | i | `<CR>` | 智能回车：已选中补全项时确认；否则正常换行；在 `{}` / `[]` / `()` 中间会自动拆行并对齐闭括号 |
+| i | `<C-a>` / `<C-e>` | 跳到当前行第一个非空白字符 / 行尾，并保持 insert mode |
 | n/x/i | `<M-h>` / `<M-l>` | 左移 / 右移当前行或选区缩进 |
 | n/x/i | `<M-Left>` / `<M-Right>` | 按单词向左 / 向右跳；insert 模式下跳完继续停留在插入模式 |
 | n/v | `H` | `^`（行首非空） |
 | n/v | `L` | `$`（行尾） |
+| n/x | `J` / `K` | 跳到下 / 上一个非空 block 的第一行；不写入 jumplist |
 | v | `<` / `>` | 缩进并保持选区（`<gv` / `>gv`） |
-| v | `(` `[` `{` `'` `"` `` ` `` | 包裹选区（remap 到 `sa<char>`，走 mini.surround） |
+| v | `(` `[` `{` `'` `"` `` ` `` | 包裹选区（走 mini.surround；圆/方/花括号不加内侧空格） |
 | x | `#` | 切换行注释（调用 `Comment.api.toggle.linewise`） |
 
 ## 插件（按 init.lua 顺序）
@@ -70,7 +75,7 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 
 ### `nvim-lualine/lualine.nvim` — 状态栏
 - `event = VeryLazy`
-- 箭头分隔符：`section_separators = { left = "", right = "" }`, `component_separators = { left = "", right = "" }`
+- Powerline 三角分隔符：`section_separators = { left = "", right = "" }`, `component_separators = { left = "", right = "" }`
 
 ### `SmiteshP/nvim-navic` — 当前代码位置 breadcrumb
 - 作为 `nvim-lspconfig` 依赖加载
@@ -137,7 +142,7 @@ LSP 键位：
 |----|------|
 | `gd` | `vim.lsp.buf.definition` |
 | `gr` | `vim.lsp.buf.references` |
-| `K` | `vim.lsp.buf.hover` |
+| `<leader>k` | `vim.lsp.buf.hover` |
 | `<leader>rn` | `vim.lsp.buf.rename` |
 | `<leader>ca` | `vim.lsp.buf.code_action` |
 | `[d` / `]d` | `diagnostic.goto_prev` / `goto_next` |
@@ -160,7 +165,7 @@ LSP 键位：
 ### `echasnovski/mini.surround` — 包裹
 - `event = VeryLazy`，默认 opts
 - 默认键位：`sa` add · `sd` delete · `sr` replace · `sf` / `sF` find · `sh` highlight · `sn` update n_lines
-- 注意：init.lua 里 visual 模式下 `(` `[` `{` `'` `"` `` ` `` 被 remap 成 `sa<char>`，所以选中后直接按括号就能包裹
+- 注意：init.lua 里 visual 模式下 `(` `[` `{` `'` `"` `` ` `` 会走 mini.surround 包裹；圆/方/花括号使用无内侧空格的右括号规则，所以选中 `foo` 后按 `(` 得到 `(foo)`，不是 `( foo )`
 
 ## 使用说明
 

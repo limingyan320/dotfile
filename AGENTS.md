@@ -22,6 +22,8 @@ codex-notifications/ <- Codex 原生 notify 配置；macOS 使用仓库内 Swift
 claude-notifications/<- claude-notifications-go 插件的自定义资源（音效/图标/标题），apply.sh 合并进 ~/.claude/claude-notifications-go/config.json
 claude-skills/       <- Claude Code 用户级 skill（如 nvim-quickref），setup.sh 把每个子目录链到 ~/.claude/skills/
 codex-skills/        <- Codex 专用 skill（如 nvim-quickref），setup.sh 把每个子目录链到 ~/.codex/skills/
+karabiner/           <- (macOS) Karabiner-Elements 键盘映射（Caps Lock 层、双 Shift 切输入法、外设键盘左 Cmd⇄左 Option；内置键盘保持原生）；setup.sh 把整个目录链到 ~/.config/karabiner（必须目录级链接，GUI 保存会替换单文件 symlink）；automatic_backups/ 已 gitignore
+raycast/             <- (macOS) Raycast extension hotkeys / aliases / preferences 的官方 .rayconfig 手动迁移说明；不 symlink Raycast 数据库
 iterm2-imgpaste/     <- (macOS) iTerm2 快捷键把 Mac 剪贴板图片 push 到远端 SSH 会话、以 bracketed paste 注入 agent 输入框；setup.sh 调 install.sh 把 daemon 链到 iTerm2 AutoLaunch
 setup.sh             <- 一键安装/同步脚本，自动检测包管理器 (brew/rpm-ostree/dnf/apt) 和平台，重跑安全
 ```
@@ -40,6 +42,7 @@ setup.sh             <- 一键安装/同步脚本，自动检测包管理器 (br
 - `claude-notifications/` 只存放仓库内资源；`~/.claude/claude-notifications-go/config.json` 由脚本在本机生成，不进 git
 - `claude-skills/` 只存放 Claude 专用 skill；`setup.sh` 负责把每个子目录链接到 `~/.claude/skills/`
 - `codex-skills/` 只存放 Codex 专用 skill；`setup.sh` 负责把每个子目录链接到 `~/.codex/skills/`
+- Raycast 不由 symlink 管理全量数据库；迁移 extension hotkeys / aliases / preferences 时使用官方 `.rayconfig` Export / Import，`.rayconfig` 虽加密但仍视为私密备份，不提交 git
 - fastfetch 的 preset / logo / `ff` 选择逻辑变更后，同步更新 `docs/fastfetch-cheatsheet.md`
 - 任何涉及 nvim/tmux 使用方式的确认性变更，都要同步更新 `docs/nvim-tmux-cheatsheet.md`
 - nvim `init.lua` 改动后，同步更新 `claude-skills/nvim-quickref/SKILL.md`、`codex-skills/nvim-quickref/SKILL.md` 和 `docs/nvim-tmux-cheatsheet.md`

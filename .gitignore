@@ -1,6 +1,19 @@
 # 敏感信息不进 git
 .secrets
 
+# Raycast 手动导出的私密备份和本机运行数据不进 git
+*.rayconfig
+raycast/*.rayconfig
+raycast/config.json
+raycast/*.sqlite
+raycast/**/*.sqlite
+raycast/**/Cache/
+raycast/**/Caches/
+raycast/**/Logs/
+raycast/**/logs/
+raycast/**/tmp/
+raycast/**/runtime/
+
 # Claude Code 本地配置
 .claude/
 *.backup.*

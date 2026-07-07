@@ -10,11 +10,7 @@
                                 "description": "Caps Lock Logic",
                                 "from": {
                                     "key_code": "caps_lock",
-                                    "modifiers": {
-                                        "optional": [
-                                            "any"
-                                        ]
-                                    }
+                                    "modifiers": { "optional": ["any"] }
                                 },
                                 "to": [
                                     {
@@ -32,11 +28,7 @@
                                         }
                                     }
                                 ],
-                                "to_if_alone": [
-                                    {
-                                        "key_code": "escape"
-                                    }
-                                ],
+                                "to_if_alone": [{ "key_code": "escape" }],
                                 "type": "basic"
                             },
                             {
@@ -50,19 +42,9 @@
                                 "description": "Right Shift + W -> Fast Up",
                                 "from": {
                                     "key_code": "w",
-                                    "modifiers": {
-                                        "mandatory": [
-                                            "right_shift"
-                                        ]
-                                    }
+                                    "modifiers": { "mandatory": ["right_shift"] }
                                 },
-                                "to": [
-                                    {
-                                        "mouse_key": {
-                                            "y": -4500
-                                        }
-                                    }
-                                ],
+                                "to": [{ "mouse_key": { "y": -4500 } }],
                                 "type": "basic"
                             },
                             {
@@ -76,19 +58,9 @@
                                 "description": "Option + W -> Slow Up (Precision)",
                                 "from": {
                                     "key_code": "w",
-                                    "modifiers": {
-                                        "mandatory": [
-                                            "left_option"
-                                        ]
-                                    }
+                                    "modifiers": { "mandatory": ["left_option"] }
                                 },
-                                "to": [
-                                    {
-                                        "mouse_key": {
-                                            "y": -300
-                                        }
-                                    }
-                                ],
+                                "to": [{ "mouse_key": { "y": -300 } }],
                                 "type": "basic"
                             },
                             {
@@ -102,19 +74,9 @@
                                 "description": "W -> Normal Up",
                                 "from": {
                                     "key_code": "w",
-                                    "modifiers": {
-                                        "optional": [
-                                            "any"
-                                        ]
-                                    }
+                                    "modifiers": { "optional": ["any"] }
                                 },
-                                "to": [
-                                    {
-                                        "mouse_key": {
-                                            "y": -750
-                                        }
-                                    }
-                                ],
+                                "to": [{ "mouse_key": { "y": -750 } }],
                                 "type": "basic"
                             },
                             {
@@ -128,19 +90,9 @@
                                 "description": "Right Shift + S -> Fast Down",
                                 "from": {
                                     "key_code": "s",
-                                    "modifiers": {
-                                        "mandatory": [
-                                            "right_shift"
-                                        ]
-                                    }
+                                    "modifiers": { "mandatory": ["right_shift"] }
                                 },
-                                "to": [
-                                    {
-                                        "mouse_key": {
-                                            "y": 4500
-                                        }
-                                    }
-                                ],
+                                "to": [{ "mouse_key": { "y": 4500 } }],
                                 "type": "basic"
                             },
                             {
@@ -154,19 +106,9 @@
                                 "description": "Option + S -> Slow Down (Precision)",
                                 "from": {
                                     "key_code": "s",
-                                    "modifiers": {
-                                        "mandatory": [
-                                            "left_option"
-                                        ]
-                                    }
+                                    "modifiers": { "mandatory": ["left_option"] }
                                 },
-                                "to": [
-                                    {
-                                        "mouse_key": {
-                                            "y": 300
-                                        }
-                                    }
-                                ],
+                                "to": [{ "mouse_key": { "y": 300 } }],
                                 "type": "basic"
                             },
                             {
@@ -180,19 +122,9 @@
                                 "description": "S -> Normal Down",
                                 "from": {
                                     "key_code": "s",
-                                    "modifiers": {
-                                        "optional": [
-                                            "any"
-                                        ]
-                                    }
+                                    "modifiers": { "optional": ["any"] }
                                 },
-                                "to": [
-                                    {
-                                        "mouse_key": {
-                                            "y": 750
-                                        }
-                                    }
-                                ],
+                                "to": [{ "mouse_key": { "y": 750 } }],
                                 "type": "basic"
                             },
                             {
@@ -206,19 +138,9 @@
                                 "description": "Right Shift + A -> Fast Left",
                                 "from": {
                                     "key_code": "a",
-                                    "modifiers": {
-                                        "mandatory": [
-                                            "right_shift"
-                                        ]
-                                    }
+                                    "modifiers": { "mandatory": ["right_shift"] }
                                 },
-                                "to": [
-                                    {
-                                        "mouse_key": {
-                                            "x": -4500
-                                        }
-                                    }
-                                ],
+                                "to": [{ "mouse_key": { "x": -4500 } }],
                                 "type": "basic"
                             },
                             {
@@ -232,19 +154,9 @@
                                 "description": "Option + A -> Slow Left (Precision)",
                                 "from": {
                                     "key_code": "a",
-                                    "modifiers": {
-                                        "mandatory": [
-                                            "left_option"
-                                        ]
-                                    }
+                                    "modifiers": { "mandatory": ["left_option"] }
                                 },
-                                "to": [
-                                    {
-                                        "mouse_key": {
-                                            "x": -300
-                                        }
-                                    }
-                                ],
+                                "to": [{ "mouse_key": { "x": -300 } }],
                                 "type": "basic"
                             },
                             {
@@ -258,19 +170,9 @@
                                 "description": "A -> Normal Left",
                                 "from": {
                                     "key_code": "a",
-                                    "modifiers": {
-                                        "optional": [
-                                            "any"
-                                        ]
-                                    }
+                                    "modifiers": { "optional": ["any"] }
                                 },
-                                "to": [
-                                    {
-                                        "mouse_key": {
-                                            "x": -750
-                                        }
-                                    }
-                                ],
+                                "to": [{ "mouse_key": { "x": -750 } }],
                                 "type": "basic"
                             },
                             {
@@ -284,19 +186,9 @@
                                 "description": "Right Shift + D -> Fast Right",
                                 "from": {
                                     "key_code": "d",
-                                    "modifiers": {
-                                        "mandatory": [
-                                            "right_shift"
-                                        ]
-                                    }
+                                    "modifiers": { "mandatory": ["right_shift"] }
                                 },
-                                "to": [
-                                    {
-                                        "mouse_key": {
-                                            "x": 4500
-                                        }
-                                    }
-                                ],
+                                "to": [{ "mouse_key": { "x": 4500 } }],
                                 "type": "basic"
                             },
                             {
@@ -310,19 +202,9 @@
                                 "description": "Option + D -> Slow Right (Precision)",
                                 "from": {
                                     "key_code": "d",
-                                    "modifiers": {
-                                        "mandatory": [
-                                            "left_option"
-                                        ]
-                                    }
+                                    "modifiers": { "mandatory": ["left_option"] }
                                 },
-                                "to": [
-                                    {
-                                        "mouse_key": {
-                                            "x": 300
-                                        }
-                                    }
-                                ],
+                                "to": [{ "mouse_key": { "x": 300 } }],
                                 "type": "basic"
                             },
                             {
@@ -336,19 +218,9 @@
                                 "description": "D -> Normal Right",
                                 "from": {
                                     "key_code": "d",
-                                    "modifiers": {
-                                        "optional": [
-                                            "any"
-                                        ]
-                                    }
+                                    "modifiers": { "optional": ["any"] }
                                 },
-                                "to": [
-                                    {
-                                        "mouse_key": {
-                                            "x": 750
-                                        }
-                                    }
-                                ],
+                                "to": [{ "mouse_key": { "x": 750 } }],
                                 "type": "basic"
                             },
                             {
@@ -362,17 +234,9 @@
                                 "description": "Space -> Left Click",
                                 "from": {
                                     "key_code": "spacebar",
-                                    "modifiers": {
-                                        "optional": [
-                                            "any"
-                                        ]
-                                    }
+                                    "modifiers": { "optional": ["any"] }
                                 },
-                                "to": [
-                                    {
-                                        "pointing_button": "button1"
-                                    }
-                                ],
+                                "to": [{ "pointing_button": "button1" }],
                                 "type": "basic"
                             },
                             {
@@ -386,17 +250,9 @@
                                 "description": "Enter -> Right Click",
                                 "from": {
                                     "key_code": "return_or_enter",
-                                    "modifiers": {
-                                        "optional": [
-                                            "any"
-                                        ]
-                                    }
+                                    "modifiers": { "optional": ["any"] }
                                 },
-                                "to": [
-                                    {
-                                        "pointing_button": "button2"
-                                    }
-                                ],
+                                "to": [{ "pointing_button": "button2" }],
                                 "type": "basic"
                             },
                             {
@@ -410,17 +266,9 @@
                                 "description": "H -> Left Arrow",
                                 "from": {
                                     "key_code": "h",
-                                    "modifiers": {
-                                        "optional": [
-                                            "any"
-                                        ]
-                                    }
+                                    "modifiers": { "optional": ["any"] }
                                 },
-                                "to": [
-                                    {
-                                        "key_code": "left_arrow"
-                                    }
-                                ],
+                                "to": [{ "key_code": "left_arrow" }],
                                 "type": "basic"
                             },
                             {
@@ -434,17 +282,9 @@
                                 "description": "J -> Down Arrow",
                                 "from": {
                                     "key_code": "j",
-                                    "modifiers": {
-                                        "optional": [
-                                            "any"
-                                        ]
-                                    }
+                                    "modifiers": { "optional": ["any"] }
                                 },
-                                "to": [
-                                    {
-                                        "key_code": "down_arrow"
-                                    }
-                                ],
+                                "to": [{ "key_code": "down_arrow" }],
                                 "type": "basic"
                             },
                             {
@@ -458,17 +298,9 @@
                                 "description": "K -> Up Arrow",
                                 "from": {
                                     "key_code": "k",
-                                    "modifiers": {
-                                        "optional": [
-                                            "any"
-                                        ]
-                                    }
+                                    "modifiers": { "optional": ["any"] }
                                 },
-                                "to": [
-                                    {
-                                        "key_code": "up_arrow"
-                                    }
-                                ],
+                                "to": [{ "key_code": "up_arrow" }],
                                 "type": "basic"
                             },
                             {
@@ -482,17 +314,9 @@
                                 "description": "L -> Right Arrow",
                                 "from": {
                                     "key_code": "l",
-                                    "modifiers": {
-                                        "optional": [
-                                            "any"
-                                        ]
-                                    }
+                                    "modifiers": { "optional": ["any"] }
                                 },
-                                "to": [
-                                    {
-                                        "key_code": "right_arrow"
-                                    }
-                                ],
+                                "to": [{ "key_code": "right_arrow" }],
                                 "type": "basic"
                             }
                         ]
@@ -503,34 +327,16 @@
                             {
                                 "conditions": [
                                     {
-                                        "input_sources": [
-                                            {
-                                                "language": "^en$"
-                                            }
-                                        ],
+                                        "input_sources": [{ "language": "^en$" }],
                                         "type": "input_source_unless"
                                     }
                                 ],
                                 "from": {
                                     "key_code": "left_shift",
-                                    "modifiers": {
-                                        "optional": [
-                                            "any"
-                                        ]
-                                    }
+                                    "modifiers": { "optional": ["any"] }
                                 },
-                                "to": [
-                                    {
-                                        "key_code": "left_shift"
-                                    }
-                                ],
-                                "to_if_alone": [
-                                    {
-                                        "select_input_source": {
-                                            "input_source_id": "^com\\.apple\\.keylayout\\.ABC$"
-                                        }
-                                    }
-                                ],
+                                "to": [{ "key_code": "left_shift" }],
+                                "to_if_alone": [{ "select_input_source": { "input_source_id": "^com\\.apple\\.keylayout\\.ABC$" } }],
                                 "type": "basic"
                             },
                             {
@@ -547,25 +353,58 @@
                                 ],
                                 "from": {
                                     "key_code": "right_shift",
-                                    "modifiers": {
-                                        "optional": [
-                                            "any"
-                                        ]
-                                    }
+                                    "modifiers": { "optional": ["any"] }
                                 },
-                                "to": [
-                                    {
-                                        "key_code": "right_shift"
-                                    }
-                                ],
+                                "to": [{ "key_code": "right_shift" }],
                                 "to_if_alone": [
                                     {
                                         "key_code": "spacebar",
-                                        "modifiers": [
-                                            "left_control"
-                                        ]
+                                        "modifiers": ["left_control"]
                                     }
                                 ],
+                                "type": "basic"
+                            }
+                        ]
+                    },
+                    {
+                        "description": "External keyboards: swap left Command and left Option",
+                        "manipulators": [
+                            {
+                                "conditions": [
+                                    {
+                                        "identifiers": [
+                                            {
+                                                "is_built_in_keyboard": true,
+                                                "is_keyboard": true
+                                            }
+                                        ],
+                                        "type": "device_unless"
+                                    }
+                                ],
+                                "from": {
+                                    "key_code": "left_command",
+                                    "modifiers": { "optional": ["any"] }
+                                },
+                                "to": [{ "key_code": "left_option" }],
+                                "type": "basic"
+                            },
+                            {
+                                "conditions": [
+                                    {
+                                        "identifiers": [
+                                            {
+                                                "is_built_in_keyboard": true,
+                                                "is_keyboard": true
+                                            }
+                                        ],
+                                        "type": "device_unless"
+                                    }
+                                ],
+                                "from": {
+                                    "key_code": "left_option",
+                                    "modifiers": { "optional": ["any"] }
+                                },
+                                "to": [{ "key_code": "left_command" }],
                                 "type": "basic"
                             }
                         ]
@@ -586,31 +425,7 @@
             ],
             "name": "Default profile",
             "selected": true,
-            "simple_modifications": [
-                {
-                    "from": {
-                        "key_code": "left_command"
-                    },
-                    "to": [
-                        {
-                            "key_code": "left_option"
-                        }
-                    ]
-                },
-                {
-                    "from": {
-                        "key_code": "left_option"
-                    },
-                    "to": [
-                        {
-                            "key_code": "left_command"
-                        }
-                    ]
-                }
-            ],
-            "virtual_hid_keyboard": {
-                "keyboard_type_v2": "ansi"
-            }
+            "virtual_hid_keyboard": { "keyboard_type_v2": "ansi" }
         }
     ]
 }

@@ -4,6 +4,7 @@
 
 - `ff` 是 `shell/.shared_rc` 里的 shell function，不再是简单 alias
 - 新开交互式 shell 时会自动执行 `ff`（tmux 内不自动刷）
+- `ff` 跑完会补发一次显示光标控制码，兜住 raw logo / preset 隐藏 cursor 后未恢复的情况
 - 默认主题按系统自动分流：
   - macOS -> `macos-rei31`
   - Ubuntu -> `ubuntu-sharingan`
