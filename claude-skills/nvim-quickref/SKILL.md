@@ -141,6 +141,7 @@ LSP 键位：
 | 键 | 动作 |
 |----|------|
 | `gd` | `vim.lsp.buf.definition` |
+| `gD` | 在右侧 vertical split 打开定义；多个定义时同时写入当前窗口 location list |
 | `gr` | `vim.lsp.buf.references` |
 | `<leader>k` | `vim.lsp.buf.hover` |
 | `<leader>rn` | `vim.lsp.buf.rename` |

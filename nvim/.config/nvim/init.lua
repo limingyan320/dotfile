@@ -765,6 +765,51 @@ vim.keymap.set("v", "{", "sa}", { remap = true })
 vim.keymap.set("v", "'", "sa'", { remap = true })
 vim.keymap.set("v", '"', 'sa"', { remap = true })
 vim.keymap.set("v", "`", "sa`", { remap = true })
+
+local function lsp_definition_vsplit()
+  local source_win = vim.api.nvim_get_current_win()
+
+  vim.lsp.buf.definition({
+    on_list = function(options)
+      local items = options.items or {}
+      if #items == 0 then
+        return
+      end
+
+      local item = items[1]
+      local target_bufnr = item.bufnr
+      if not target_bufnr or target_bufnr == 0 then
+        if not item.filename then
+          return
+        end
+        target_bufnr = vim.fn.bufadd(item.filename)
+      end
+      if target_bufnr == 0 then
+        return
+      end
+
+      if vim.api.nvim_win_is_valid(source_win) then
+        vim.api.nvim_set_current_win(source_win)
+      end
+
+      vim.cmd("rightbelow vertical split")
+      vim.cmd("normal! m'")
+      vim.fn.bufload(target_bufnr)
+      vim.bo[target_bufnr].buflisted = true
+      vim.api.nvim_win_set_buf(0, target_bufnr)
+      vim.api.nvim_win_set_cursor(0, { item.lnum, math.max((item.col or 1) - 1, 0) })
+      pcall(vim.cmd, "normal! zv")
+
+      if #items > 1 then
+        vim.fn.setloclist(0, {}, " ", {
+          title = options.title or "LSP definitions",
+          items = items,
+        })
+      end
+    end,
+  })
+end
+
 vim.api.nvim_create_autocmd("BufEnter", {
   callback = function(args)
     attach_smart_enter(args.buf)
@@ -1150,6 +1195,7 @@ require("lazy").setup({
     end,
     keys = {
       { "gd", vim.lsp.buf.definition, desc = "Go to definition" },
+      { "gD", lsp_definition_vsplit, desc = "Go to definition in vertical split" },
       { "gr", vim.lsp.buf.references, desc = "References" },
       { "<leader>k", vim.lsp.buf.hover, desc = "Hover" },
       { "<leader>rn", vim.lsp.buf.rename, desc = "Rename" },
