@@ -23,7 +23,7 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 - `clipboard = unnamedplus`；检测到 `$SSH_TTY` / `$SSH_CONNECTION` / `$XDG_SESSION_TYPE=tty` 时自动切到 **OSC 52**（走终端剪贴板，需要 iTerm2/WezTerm/kitty 等允许剪贴板访问，tmux 需 `set-clipboard on`）
 - `autoread` + `updatetime = 500`（缩短 `CursorHold` 触发间隔让外部改动近实时可见）
 - 外部改动侦测：`FocusGained` / `BufEnter` / `CursorHold{,I}` / `TermLeave` 主动 `checktime`；每个文件 buffer 还会跑一个 `uv.new_fs_event` watcher，被外部改动后弹 WARN `文件被外部修改，已重新加载`
-- terminal mode 使用不闪烁的黄色实心块光标；`<leader>t` 打开完整 terminal buffer；`<C-/>` / `<C-_>` 切换底部 terminal 面板，隐藏时保留 shell 状态
+- terminal mode 使用不闪烁的黄色实心块光标；`<leader>t` 打开完整 terminal buffer；`<C-/>` / `<C-_>` 切换底部 terminal 面板，隐藏时保留 shell 状态；面板窗口被改作普通编辑后，再次 toggle 会保留该编辑窗口并重新打开终端
 - netrw 禁用（`vim.g.loaded_netrw = 1`），文件浏览全走 oil
 
 ## 自定义键位（非插件）

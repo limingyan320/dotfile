@@ -568,11 +568,43 @@ vim.keymap.set("n", "<leader>t", open_full_terminal, { desc = "Terminal in curre
 local terminal_panel = {
   buf = nil,
   win = nil,
+  win_options = nil,
   height = 12,
   default_height = 12,
   min_height = 5,
   step = 2,
 }
+
+local function restore_terminal_panel_window_options(win, options)
+  if not win or not vim.api.nvim_win_is_valid(win) or not options then
+    return
+  end
+
+  for name, value in pairs(options) do
+    vim.wo[win][name] = value
+  end
+end
+
+local function visible_terminal_panel_win()
+  local win = terminal_panel.win
+  if not win or not vim.api.nvim_win_is_valid(win) then
+    terminal_panel.win = nil
+    terminal_panel.win_options = nil
+    return nil
+  end
+
+  if not terminal_panel.buf
+    or not vim.api.nvim_buf_is_valid(terminal_panel.buf)
+    or vim.api.nvim_win_get_buf(win) ~= terminal_panel.buf
+  then
+    restore_terminal_panel_window_options(win, terminal_panel.win_options)
+    terminal_panel.win = nil
+    terminal_panel.win_options = nil
+    return nil
+  end
+
+  return win
+end
 
 local function terminal_panel_job_running(bufnr)
   if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
@@ -591,6 +623,12 @@ local function open_terminal_panel()
 
   vim.cmd("botright " .. terminal_panel.height .. "split")
   terminal_panel.win = vim.api.nvim_get_current_win()
+  terminal_panel.win_options = {
+    winfixheight = vim.wo[terminal_panel.win].winfixheight,
+    number = vim.wo[terminal_panel.win].number,
+    relativenumber = vim.wo[terminal_panel.win].relativenumber,
+    signcolumn = vim.wo[terminal_panel.win].signcolumn,
+  }
   vim.wo[terminal_panel.win].winfixheight = true
   vim.wo[terminal_panel.win].number = false
   vim.wo[terminal_panel.win].relativenumber = false
@@ -606,9 +644,13 @@ local function open_terminal_panel()
     vim.fn.termopen(vim.o.shell, { cwd = dir })
   end
 
+  local panel_win = terminal_panel.win
   vim.schedule(function()
-    if vim.api.nvim_win_is_valid(terminal_panel.win) then
-      vim.api.nvim_set_current_win(terminal_panel.win)
+    if terminal_panel.win == panel_win
+      and vim.api.nvim_win_is_valid(panel_win)
+      and vim.api.nvim_win_get_buf(panel_win) == terminal_panel.buf
+    then
+      vim.api.nvim_set_current_win(panel_win)
       vim.cmd("startinsert")
     end
   end)
@@ -622,9 +664,10 @@ end
 local function set_terminal_panel_height(height)
   terminal_panel.height = math.max(terminal_panel.min_height, math.min(terminal_panel_max_height(), height))
 
-  if terminal_panel.win and vim.api.nvim_win_is_valid(terminal_panel.win) then
-    vim.api.nvim_win_set_height(terminal_panel.win, terminal_panel.height)
-    vim.wo[terminal_panel.win].winfixheight = true
+  local panel_win = visible_terminal_panel_win()
+  if panel_win then
+    vim.api.nvim_win_set_height(panel_win, terminal_panel.height)
+    vim.wo[panel_win].winfixheight = true
   end
 end
 
@@ -637,9 +680,17 @@ local function reset_terminal_panel_height()
 end
 
 local function toggle_terminal_panel()
-  if terminal_panel.win and vim.api.nvim_win_is_valid(terminal_panel.win) then
-    vim.api.nvim_win_close(terminal_panel.win, false)
+  local panel_win = visible_terminal_panel_win()
+  if panel_win then
+    if #vim.api.nvim_tabpage_list_wins(0) == 1 then
+      local replacement_buf = vim.api.nvim_create_buf(true, false)
+      vim.api.nvim_win_set_buf(panel_win, replacement_buf)
+      restore_terminal_panel_window_options(panel_win, terminal_panel.win_options)
+    else
+      vim.api.nvim_win_close(panel_win, false)
+    end
     terminal_panel.win = nil
+    terminal_panel.win_options = nil
     return
   end
 

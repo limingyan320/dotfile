@@ -141,7 +141,7 @@ browser 内（telescope 默认键）：
 | `Ctrl+/` | 底部 terminal 面板开关；首次打开会按当前上下文目录启动 shell，再按隐藏但保留 shell 状态 |
 | `Option + +` / `Option + -` / `Option + 0` | 增高 / 降低 / 重置底部 terminal 面板高度 |
 
-> terminal 面板默认高 12 行，打开后直接进入输入；normal / insert / terminal 模式都可用 `Ctrl+/` toggle。终端实际发送 `<C-_>` 时也已兼容。`Option + +` 在部分终端里会发成 `<M-=>`，已一起兼容。
+> terminal 面板默认高 12 行，打开后直接进入输入；normal / insert / terminal 模式都可用 `Ctrl+/` toggle。终端实际发送 `<C-_>` 时也已兼容。若把面板窗口改作普通编辑 buffer，再按 `Ctrl+/` 会保留该编辑窗口并重新打开底部终端。`Option + +` 在部分终端里会发成 `<M-=>`，已一起兼容。
 
 > 外部工具（如 Claude）改了文件，nvim 会在光标停 0.5 秒内自动重新加载并提示。
 
