@@ -1063,9 +1063,17 @@ require("lazy").setup({
     keys = {
       { "<leader>gd", "<cmd>DiffviewOpen<cr>", desc = "Git diff" },
       { "<leader>gh", "<cmd>DiffviewFileHistory %<cr>", desc = "File history" },
+      { "<leader>gH", "<cmd>DiffviewFileHistory<cr>", desc = "Repository history" },
       { "<leader>gq", "<cmd>DiffviewClose<cr>", desc = "Close diff" },
     },
-    opts = {},
+    opts = {
+      hooks = {
+        diff_buf_win_enter = function()
+          -- Diffview defaults to foldlevel=0, which hides unchanged regions.
+          vim.opt_local.foldlevel = 99
+        end,
+      },
+    },
   },
   -- 注释：可视模式选中多行后按 # 切换对应语言的行注释
   {

@@ -119,7 +119,11 @@ file_browser 扩展 opts：`hidden = true`, `grouped = true`（目录排前面�
 |----|------|
 | `<leader>gd` | `:DiffviewOpen` |
 | `<leader>gh` | `:DiffviewFileHistory %`（当前文件历史） |
+| `<leader>gH` | `:DiffviewFileHistory`（整个仓库历史） |
 | `<leader>gq` | `:DiffviewClose` |
+
+- diff / file history 右侧比较窗口默认全部展开；仍可用 `zM` / `zR` 折叠 / 展开
+- file history 面板中用 `j` / `k` 选择提交，`Enter` 查看该提交的父版本与提交后版本，`L` 查看完整提交信息，`y` 复制 commit hash，`g?` 查看上下文帮助
 
 ### `numToStr/Comment.nvim` — 注释
 - `event = { BufReadPre, BufNewFile }`
