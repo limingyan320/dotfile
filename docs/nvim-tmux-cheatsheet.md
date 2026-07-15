@@ -178,11 +178,12 @@ browser 内（telescope 默认键）：
 | `Space t` | 在当前上下文目录开完整 terminal buffer 并直接进入输入；如果当前 buffer 就是 terminal，会沿用该 shell 的 cwd |
 | `Ctrl+/` | 底部普通 shell 开关；首次按当前上下文目录启动，显示后自动进入输入，隐藏时保留进程（`Ctrl+_` 也兼容） |
 | `Option + /` | 底部 Codex agent 开关；打开后若 Codex 最新输出实际可见会自动 check、清除红色完成未读并关闭对应 macOS popup，单纯隐藏未查看的 drawer 不会清未读；以 `codex --yolo` 从当前上下文的 Git 根启动，显示后停在 terminal-normal，隐藏时保留对话进程 |
+| `gx`（Codex terminal-normal） | 打开光标下的绝对或项目相对路径；支持 `:行:列` / `#L行C列`，在上一个非 terminal 编辑窗口跳转 |
 | `Option + +` / `Option + -` / `Option + 0` | 增高 / 降低 / 重置当前底部通道高度 |
 
 > 普通 shell 和 Codex 各自保留独立的 terminal buffer / 进程，但共用同一个底部 drawer，所以互相切换不会堆叠窗口或丢失 shell / 对话状态。普通 shell 显示后自动进入 terminal 输入；Codex 显示后保持 terminal-normal 和原来的阅读位置，需要回复时按 `i` / `a` / `A` 进入输入。普通 shell 默认高 12 行；Codex 默认至少 12 行，并尽量占屏幕高度的 45%。normal / insert / terminal 模式下都能直接切换。若把 drawer 窗口改作普通编辑 buffer，下次 toggle 会保留该编辑窗口并另开 drawer。`Option + +` 在部分终端里会发成 `<M-=>`，已一起兼容。
 
-> Codex 通道在一次 Neovim 运行期间只维护一个会话，并默认使用 `--yolo` 权限；切换到其他项目后仍会回到原对话。Codex 进程退出后，隐藏并重新打开会从当前项目启动新会话；若 `codex` 不在 `PATH` 中则会提示错误。
+> Codex 通道在一次 Neovim 运行期间只维护一个会话，并默认使用 `--yolo` 权限；切换到其他项目后仍会回到原对话。Codex terminal-normal 中按 `gx` 时，相对路径始终按这个会话启动时的项目根解析，不会误用后来切换到的项目；反引号路径、Markdown 链接、`path:行:列` 和 `path#L行C列` 都可识别。目标文件会复用刚离开的非 terminal 编辑窗口，找不到时回退到打开 drawer 前的窗口，Codex 继续留在底部；网页 URL 仍交给系统浏览器。Codex 进程退出后，隐藏并重新打开会从当前项目启动新会话；若 `codex` 不在 `PATH` 中则会提示错误。
 
 > 外部工具（如 Claude）改了文件，nvim 会在光标停 0.5 秒内自动重新加载并提示。
 

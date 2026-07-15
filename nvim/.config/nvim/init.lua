@@ -1341,6 +1341,7 @@ vim.keymap.set("n", "<leader>t", open_full_terminal, { desc = "Terminal in curre
 local terminal_drawer = {
   win = nil,
   win_options = nil,
+  return_win = nil,
   active = "shell",
   min_height = 5,
   step = 2,
@@ -1369,6 +1370,219 @@ local terminal_sessions = {
     end,
   },
 }
+
+local function editor_target_window(win)
+  if not win or not vim.api.nvim_win_is_valid(win) or win == terminal_drawer.win then
+    return false
+  end
+  if vim.api.nvim_win_get_tabpage(win) ~= vim.api.nvim_get_current_tabpage() then
+    return false
+  end
+  if vim.api.nvim_win_get_config(win).relative ~= "" then
+    return false
+  end
+
+  return vim.bo[vim.api.nvim_win_get_buf(win)].buftype ~= "terminal"
+end
+
+local function codex_target_window()
+  local alternate_number = vim.fn.winnr("#")
+  if alternate_number > 0 then
+    local alternate = vim.fn.win_getid(alternate_number)
+    if editor_target_window(alternate) then
+      return alternate
+    end
+  end
+
+  if editor_target_window(terminal_drawer.return_win) then
+    return terminal_drawer.return_win
+  end
+
+  local drawer_pos = { vim.o.lines, 0 }
+  if terminal_drawer.win and vim.api.nvim_win_is_valid(terminal_drawer.win) then
+    drawer_pos = vim.api.nvim_win_get_position(terminal_drawer.win)
+  end
+  local best_win = nil
+  local best_distance = math.huge
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    if editor_target_window(win) then
+      local pos = vim.api.nvim_win_get_position(win)
+      local bottom = pos[1] + vim.api.nvim_win_get_height(win)
+      local distance = math.abs(drawer_pos[1] - bottom) * 1000 + math.abs(drawer_pos[2] - pos[2])
+      if distance < best_distance then
+        best_win = win
+        best_distance = distance
+      end
+    end
+  end
+
+  return best_win
+end
+
+local function terminal_hyperlink_at_cursor()
+  local bufnr = vim.api.nvim_get_current_buf()
+  local cursor = vim.api.nvim_win_get_cursor(0)
+  local row = cursor[1] - 1
+  local col = cursor[2]
+  local extmarks = vim.api.nvim_buf_get_extmarks(bufnr, -1, { row, col }, { row, col }, {
+    details = true,
+    overlap = true,
+    type = "highlight",
+  })
+
+  for _, extmark in ipairs(extmarks) do
+    local details = extmark[4]
+    if details and details.url then
+      return details.url
+    end
+  end
+
+  return nil
+end
+
+local function delimited_reference_at_cursor(line, cursor_col, pattern)
+  local offset = 1
+  while true do
+    local start_col, end_col, reference = line:find(pattern, offset)
+    if not start_col then
+      return nil
+    end
+    if cursor_col >= start_col and cursor_col <= end_col then
+      return reference
+    end
+    offset = end_col + 1
+  end
+end
+
+local function codex_reference_at_cursor()
+  local hyperlink = terminal_hyperlink_at_cursor()
+  if hyperlink then
+    return hyperlink
+  end
+
+  local line = vim.api.nvim_get_current_line()
+  local cursor_col = vim.api.nvim_win_get_cursor(0)[2] + 1
+  local reference = delimited_reference_at_cursor(line, cursor_col, "%[[^%]]+%]%(([^%)]+)%)")
+    or delimited_reference_at_cursor(line, cursor_col, "`([^`]+)`")
+  if reference then
+    return vim.trim(reference)
+  end
+
+  if line:sub(cursor_col, cursor_col):match("%s") then
+    return nil
+  end
+
+  local start_col = cursor_col
+  while start_col > 1 and not line:sub(start_col - 1, start_col - 1):match("%s") do
+    start_col = start_col - 1
+  end
+  local end_col = cursor_col
+  while end_col < #line and not line:sub(end_col + 1, end_col + 1):match("%s") do
+    end_col = end_col + 1
+  end
+
+  reference = line:sub(start_col, end_col)
+  reference = reference:gsub("^[%[%]%(%)%{%}<>`'\"|]+", "")
+  reference = reference:gsub("[%[%]%(%)%{%}<>,;.!?`'\"|]+$", "")
+  return reference ~= "" and reference or nil
+end
+
+local function split_path_location(reference)
+  local path, line, column = reference:match("^(.-):(%d+):(%d+)$")
+  if not path then
+    path, line = reference:match("^(.-):(%d+)$")
+  end
+  if not path then
+    path, line, column = reference:match("^(.-)#L(%d+)C(%d+)$")
+  end
+  if not path then
+    path, line = reference:match("^(.-)#L(%d+)$")
+  end
+
+  return path or reference, tonumber(line), tonumber(column)
+end
+
+local function parse_codex_reference(reference)
+  if reference:match("^%a[%w+.-]*://") and not vim.startswith(reference, "file://") then
+    return { url = reference }
+  end
+
+  if vim.startswith(reference, "file://") then
+    local file_uri, fragment = reference:match("^(file://[^#]+)#(.+)$")
+    file_uri = file_uri or reference
+    local path, line, column = split_path_location(file_uri)
+    if fragment then
+      local fragment_line, fragment_column = fragment:match("^L(%d+)C(%d+)$")
+      fragment_line = fragment_line or fragment:match("^L(%d+)$")
+      line = tonumber(fragment_line) or line
+      column = tonumber(fragment_column) or column
+    end
+    return { path = vim.uri_to_fname(path), line = line, column = column }
+  end
+
+  local path, line, column = split_path_location(reference)
+  return { path = path, line = line, column = column }
+end
+
+local function resolve_codex_path(session, path)
+  path = vim.fs.normalize(path)
+  if vim.fn.isabsolutepath(path) == 0 then
+    local root = session.cwd or terminal_buffer_cwd(session.buf) or vim.fn.getcwd()
+    path = vim.fs.normalize(vim.fs.joinpath(root, path))
+  end
+  return path
+end
+
+local function open_codex_reference(session)
+  local reference = codex_reference_at_cursor()
+  if not reference then
+    vim.notify("光标下没有可打开的 Codex 路径", vim.log.levels.WARN)
+    return
+  end
+
+  local target = parse_codex_reference(reference)
+  if target.url then
+    local _, err = vim.ui.open(target.url)
+    if err then
+      vim.notify(err, vim.log.levels.ERROR)
+    end
+    return
+  end
+
+  local path = resolve_codex_path(session, target.path)
+  local stat = uv.fs_stat(path)
+  if not stat then
+    vim.notify("找不到 Codex 引用路径: " .. path, vim.log.levels.WARN)
+    return
+  end
+
+  local target_win = codex_target_window()
+  if not target_win then
+    vim.notify("当前 tab 没有可用于打开路径的编辑窗口", vim.log.levels.WARN)
+    return
+  end
+
+  vim.api.nvim_set_current_win(target_win)
+  local ok, err = pcall(vim.api.nvim_cmd, { cmd = "edit", args = { path } }, {})
+  if not ok then
+    vim.notify(err, vim.log.levels.ERROR)
+    return
+  end
+
+  if stat.type == "file" and target.line then
+    local line = math.min(math.max(target.line, 1), vim.api.nvim_buf_line_count(0))
+    local text = vim.api.nvim_buf_get_lines(0, line - 1, line, false)[1] or ""
+    local column = math.min(math.max((target.column or 1) - 1, 0), #text)
+    vim.api.nvim_win_set_cursor(target_win, { line, column })
+    vim.cmd("normal! zvzz")
+  end
+end
+
+local function configure_codex_buffer(session)
+  vim.keymap.set("n", "gx", function()
+    open_codex_reference(session)
+  end, { buffer = session.buf, desc = "Open Codex path in editor window" })
+end
 
 local function restore_terminal_drawer_window_options(win, options)
   if not win or not vim.api.nvim_win_is_valid(win) or not options then
@@ -1518,6 +1732,10 @@ local function open_terminal_session(name)
 
   local height = terminal_session_height(session)
   local drawer_win = visible_terminal_drawer_win()
+  local current_win = vim.api.nvim_get_current_win()
+  if current_win ~= drawer_win and editor_target_window(current_win) then
+    terminal_drawer.return_win = current_win
+  end
   if not drawer_win then
     drawer_win = create_terminal_drawer(height)
   end
@@ -1536,6 +1754,11 @@ local function open_terminal_session(name)
     vim.bo[session.buf].bufhidden = "hide"
     local command = type(session.command) == "function" and session.command() or session.command
     vim.fn.termopen(command, { cwd = dir })
+    session.cwd = dir
+  end
+
+  if name == "codex" then
+    configure_codex_buffer(session)
   end
 
   vim.api.nvim_win_set_height(drawer_win, height)
