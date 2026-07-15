@@ -75,7 +75,7 @@
 
 ## Live Session（像 tmux detach / attach）
 
-Neovim 0.12 可以把当前 TUI 脱离，但让原来的 Nvim 进程继续在后台运行；窗口布局、buffer、未保存修改以及普通 shell / Codex terminal 都会原样保留。
+Neovim 0.12 可以把当前 TUI 脱离，但让原来的 Nvim 进程继续在后台运行；窗口布局、buffer、未保存修改以及普通 shell / Codex terminal 都会原样保留。交互式 shell 里的普通 `nvim` / `nvim .` / `vim` 会由独立的隐藏 tmux server 托管，因此即使承载 TUI 的 terminal 窗口被意外关闭，Nvim 进程和视图也仍会存活。
 
 | 按键 | 操作 |
 |------|------|
@@ -94,6 +94,8 @@ Space f s
 列表用 `DETACHED` / `ATTACHED` 标出连接状态，并显示项目、当前 buffer 和 `窗口数w 标签数t 修改数* terminal数term`，不会要求记 socket 路径。headless / embed 辅助进程不会出现；启动时若存在 detached 会话，只会轻量提示数量，不会打断 `nvim .` 的 Oil 视图。
 
 从刚启动的空白 `nvim` / `nvim .` 连接时，这个入口实例会自动回收；如果当前实例已有分屏、多个 buffer、未保存修改、terminal，或它本身曾被 detach，则切换后仍留在后台，可以再通过 `Space fs` 切回来。
+
+隐藏 host 使用单独的 tmux socket `dotfiles-nvim-host`，前台仍是直接的 Neovim remote UI，不会出现 tmux 状态栏、copy mode 或滚动拦截；普通 `tmux ls` 也看不到它。排查时可运行 `tmux -L dotfiles-nvim-host ls`。`:qa` / `:qa!` 会正常结束对应 Nvim session、socket；最后一个 session 退出后隐藏 tmux server 也自动结束。`nvim --headless`、`--server`、`--listen`、管道输入等工具调用会自动绕过托管；临时需要完全直启时可用 `command nvim ...`。
 
 ---
 
@@ -163,12 +165,12 @@ browser 内（telescope 默认键）：
 | `Space yp` | 任意 buffer 里复制当前文件的**绝对路径** |
 | `Space t` | 在当前上下文目录开完整 terminal buffer 并直接进入输入；如果当前 buffer 就是 terminal，会沿用该 shell 的 cwd |
 | `Ctrl+/` | 底部普通 shell 开关；首次按当前上下文目录启动，显示后自动进入输入，隐藏时保留进程（`Ctrl+_` 也兼容） |
-| `Option + /` | 底部 Codex agent 开关；首次从当前上下文的 Git 根启动，显示后停在 terminal-normal，隐藏时保留对话进程 |
+| `Option + /` | 底部 Codex agent 开关；以 `codex --yolo` 从当前上下文的 Git 根启动，显示后停在 terminal-normal，隐藏时保留对话进程 |
 | `Option + +` / `Option + -` / `Option + 0` | 增高 / 降低 / 重置当前底部通道高度 |
 
 > 普通 shell 和 Codex 各自保留独立的 terminal buffer / 进程，但共用同一个底部 drawer，所以互相切换不会堆叠窗口或丢失 shell / 对话状态。普通 shell 显示后自动进入 terminal 输入；Codex 显示后保持 terminal-normal 和原来的阅读位置，需要回复时按 `i` / `a` / `A` 进入输入。普通 shell 默认高 12 行；Codex 默认至少 12 行，并尽量占屏幕高度的 45%。normal / insert / terminal 模式下都能直接切换。若把 drawer 窗口改作普通编辑 buffer，下次 toggle 会保留该编辑窗口并另开 drawer。`Option + +` 在部分终端里会发成 `<M-=>`，已一起兼容。
 
-> Codex 通道在一次 Neovim 运行期间只维护一个会话；切换到其他项目后仍会回到原对话。Codex 进程退出后，隐藏并重新打开会从当前项目启动新会话；若 `codex` 不在 `PATH` 中则会提示错误。
+> Codex 通道在一次 Neovim 运行期间只维护一个会话，并默认使用 `--yolo` 权限；切换到其他项目后仍会回到原对话。Codex 进程退出后，隐藏并重新打开会从当前项目启动新会话；若 `codex` 不在 `PATH` 中则会提示错误。
 
 > 外部工具（如 Claude）改了文件，nvim 会在光标停 0.5 秒内自动重新加载并提示。
 

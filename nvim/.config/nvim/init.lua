@@ -137,10 +137,73 @@ local function fetch_nvim_session(address)
   return info
 end
 
+local managed_nvim_session_dir = vim.env.DOTFILES_NVIM_SESSION_DIR
+local managed_nvim_tmux_server = vim.env.DOTFILES_NVIM_TMUX_SERVER or "dotfiles-nvim-host"
+
+local function managed_nvim_session_id(address)
+  if not managed_nvim_session_dir or managed_nvim_session_dir == "" then
+    return nil
+  end
+
+  local parent = vim.fs.normalize(vim.fn.fnamemodify(address, ":h"))
+  if parent ~= vim.fs.normalize(managed_nvim_session_dir) then
+    return nil
+  end
+
+  return vim.fn.fnamemodify(address, ":t"):match("^(nvim%-.+)%.sock$")
+end
+
+local function managed_nvim_session_addresses()
+  if not managed_nvim_session_dir or managed_nvim_session_dir == "" then
+    return {}
+  end
+
+  local addresses = {}
+  local scan = uv.fs_scandir(managed_nvim_session_dir)
+  if not scan then
+    return addresses
+  end
+
+  while true do
+    local name, file_type = uv.fs_scandir_next(scan)
+    if not name then
+      break
+    end
+    if file_type == "socket" and name:match("^nvim%-.+%.sock$") then
+      table.insert(addresses, managed_nvim_session_dir .. "/" .. name)
+    end
+  end
+
+  return addresses
+end
+
+local function remove_stale_managed_nvim_socket(address)
+  local session_id = managed_nvim_session_id(address)
+  if not session_id or vim.fn.executable("tmux") ~= 1 then
+    return
+  end
+
+  local result = vim.system({
+    "tmux",
+    "-L",
+    managed_nvim_tmux_server,
+    "has-session",
+    "-t",
+    session_id,
+  }, { text = true, env = { TMUX = "" } }):wait()
+  local stat = uv.fs_stat(address)
+  if result.code ~= 0 and stat and stat.type == "socket" then
+    uv.fs_unlink(address)
+  end
+end
+
 local function discover_nvim_sessions()
   local list_ok, addresses = pcall(vim.fn.serverlist, { peer = true })
   if not list_ok or type(addresses) ~= "table" then
-    return {}
+    addresses = {}
+  end
+  for _, address in ipairs(managed_nvim_session_addresses()) do
+    table.insert(addresses, address)
   end
 
   local sessions = {}
@@ -151,6 +214,8 @@ local function discover_nvim_sessions()
       local session = fetch_nvim_session(address)
       if session then
         table.insert(sessions, session)
+      else
+        remove_stale_managed_nvim_socket(address)
       end
     end
   end
@@ -210,8 +275,59 @@ local function current_session_should_survive_switch()
   return named_file_buffers > 1
 end
 
+local session_environment_names = {
+  "PATH",
+  "HOME",
+  "SHELL",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE",
+  "SSH_AUTH_SOCK",
+  "SSH_AGENT_PID",
+  "SSH_CONNECTION",
+  "SSH_CLIENT",
+  "SSH_TTY",
+  "DISPLAY",
+  "WAYLAND_DISPLAY",
+  "XDG_RUNTIME_DIR",
+  "XDG_CONFIG_HOME",
+  "XDG_DATA_HOME",
+  "XDG_STATE_HOME",
+  "XDG_CACHE_HOME",
+  "CODEX_HOME",
+  "CODEX_NOTIFY_LISTEN_PORT",
+}
+
+local sync_session_environment_lua = [=[
+local environment = ...
+for name, value in pairs(environment) do
+  if value == false then
+    vim.env[name] = nil
+  else
+    vim.env[name] = value
+  end
+end
+return true
+]=]
+
+local function sync_nvim_session_environment(address)
+  local environment = {}
+  for _, name in ipairs(session_environment_names) do
+    local value = vim.env[name]
+    environment[name] = value and value ~= "" and value or false
+  end
+
+  local connect_ok, chan = pcall(vim.fn.sockconnect, "pipe", address, { rpc = true })
+  if not connect_ok or type(chan) ~= "number" or chan <= 0 then
+    return
+  end
+  pcall(vim.rpcrequest, chan, "nvim_exec_lua", sync_session_environment_lua, { environment })
+  pcall(vim.fn.chanclose, chan)
+end
+
 local function connect_to_nvim_session(address, keep_current)
   vim.g.dotfiles_session_last_active = os.time()
+  sync_nvim_session_environment(address)
   local command = keep_current and "connect " or "connect! "
   local ok, err = pcall(vim.cmd, command .. vim.fn.fnameescape(address))
   if not ok then
@@ -865,7 +981,7 @@ local terminal_sessions = {
   },
   codex = {
     buf = nil,
-    command = { "codex" },
+    command = { "codex", "--yolo" },
     executable = "codex",
     context_dir = project_context_dir,
     start_insert = false,

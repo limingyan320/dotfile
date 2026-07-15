@@ -7,6 +7,8 @@
 export LANG=en_US.UTF-8
 export EDITOR=nvim
 export DISABLE_TELEMETRY=1
+export DOTFILES_NVIM_TMUX_SERVER="${DOTFILES_NVIM_TMUX_SERVER:-dotfiles-nvim-host}"
+export DOTFILES_NVIM_SESSION_DIR="${DOTFILES_NVIM_SESSION_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/nvim/sessions}"
 
 # --- PATH ---
 # 在这里添加跨平台通用的 PATH
@@ -23,6 +25,117 @@ if [[ $- == *i* ]]; then
     alias codex='codex --yolo'
     alias g='nvitop'
     alias v5='ssh -N -D 192.168.100.160:1080 administrator@192.168.100.127'
+
+    __dotfiles_nvim_use_direct_binary() {
+        [ "${DOTFILES_NVIM_DIRECT:-}" = "1" ] && return 0
+        [ -t 0 ] && [ -t 1 ] || return 0
+
+        local arg
+        for arg in "$@"; do
+            case "$arg" in
+                -|--headless|--embed|--api-info|--clean|--version|-v|--help|-h|-\?|\
+                --server|--server=*|--listen|--listen=*|--remote*|\
+                -e|-E|-es|-Es|-s|-l|-l*|-u|-u*)
+                    return 0
+                    ;;
+            esac
+        done
+
+        return 1
+    }
+
+    nvim() {
+        if __dotfiles_nvim_use_direct_binary "$@" || ! command -v tmux >/dev/null 2>&1; then
+            command nvim "$@"
+            return $?
+        fi
+
+        local session_id socket attempt rc
+        session_id="nvim-$(date +%s)-$$-${RANDOM:-0}"
+        socket="$DOTFILES_NVIM_SESSION_DIR/$session_id.sock"
+
+        if ! mkdir -p "$DOTFILES_NVIM_SESSION_DIR" || ! chmod 700 "$DOTFILES_NVIM_SESSION_DIR"; then
+            printf '%s\n' "nvim: cannot prepare persistent session directory; starting directly" >&2
+            command nvim "$@"
+            return $?
+        fi
+
+        rm -f "$socket"
+        if ! TMUX= command tmux -L "$DOTFILES_NVIM_TMUX_SERVER" -f /dev/null \
+            new-session -d -s "$session_id" -c "$PWD" \
+            -e "PATH=$PATH" \
+            -e "HOME=$HOME" \
+            -e "SHELL=${SHELL:-/bin/sh}" \
+            -e "LANG=${LANG:-}" \
+            -e "LC_ALL=${LC_ALL:-}" \
+            -e "SSH_AUTH_SOCK=${SSH_AUTH_SOCK:-}" \
+            -e "SSH_AGENT_PID=${SSH_AGENT_PID:-}" \
+            -e "SSH_CONNECTION=${SSH_CONNECTION:-}" \
+            -e "SSH_CLIENT=${SSH_CLIENT:-}" \
+            -e "SSH_TTY=${SSH_TTY:-}" \
+            -e "DISPLAY=${DISPLAY:-}" \
+            -e "WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-}" \
+            -e "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-}" \
+            -e "XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-}" \
+            -e "XDG_DATA_HOME=${XDG_DATA_HOME:-}" \
+            -e "XDG_STATE_HOME=${XDG_STATE_HOME:-}" \
+            -e "XDG_CACHE_HOME=${XDG_CACHE_HOME:-}" \
+            -e "CODEX_HOME=${CODEX_HOME:-}" \
+            -e "CODEX_NOTIFY_LISTEN_PORT=${CODEX_NOTIFY_LISTEN_PORT:-}" \
+            -e "DOTFILES_NVIM_TMUX_SERVER=$DOTFILES_NVIM_TMUX_SERVER" \
+            -e "DOTFILES_NVIM_SESSION_DIR=$DOTFILES_NVIM_SESSION_DIR" \
+            -e "DOTFILES_NVIM_PARENT_TMUX=${TMUX:-}" \
+            -e "DOTFILES_NVIM_PARENT_TMUX_PANE=${TMUX_PANE:-}" \
+            sh -c '
+                for name in \
+                    LC_ALL SSH_AUTH_SOCK SSH_AGENT_PID SSH_CONNECTION SSH_CLIENT SSH_TTY \
+                    DISPLAY WAYLAND_DISPLAY XDG_RUNTIME_DIR XDG_CONFIG_HOME XDG_DATA_HOME \
+                    XDG_STATE_HOME XDG_CACHE_HOME CODEX_HOME CODEX_NOTIFY_LISTEN_PORT
+                do
+                    eval "value=\${$name-}"
+                    [ -n "$value" ] || unset "$name"
+                done
+                unset name value
+
+                if [ -n "$DOTFILES_NVIM_PARENT_TMUX" ]; then
+                    export TMUX="$DOTFILES_NVIM_PARENT_TMUX"
+                    export TMUX_PANE="$DOTFILES_NVIM_PARENT_TMUX_PANE"
+                else
+                    unset TMUX TMUX_PANE
+                fi
+                unset DOTFILES_NVIM_PARENT_TMUX DOTFILES_NVIM_PARENT_TMUX_PANE
+                exec nvim --embed --listen "$@"
+            ' sh "$socket" "$@"
+        then
+            printf '%s\n' "nvim: persistent host failed to start; starting directly" >&2
+            command nvim "$@"
+            return $?
+        fi
+
+        attempt=0
+        while [ "$attempt" -lt 100 ] && [ ! -S "$socket" ]; do
+            if ! TMUX= command tmux -L "$DOTFILES_NVIM_TMUX_SERVER" has-session -t "$session_id" 2>/dev/null; then
+                break
+            fi
+            sleep 0.02
+            attempt=$((attempt + 1))
+        done
+
+        if [ ! -S "$socket" ]; then
+            TMUX= command tmux -L "$DOTFILES_NVIM_TMUX_SERVER" kill-session -t "$session_id" 2>/dev/null
+            rm -f "$socket"
+            printf '%s\n' "nvim: persistent session did not become ready" >&2
+            return 1
+        fi
+
+        command nvim --server "$socket" --remote-ui
+        rc=$?
+
+        if ! TMUX= command tmux -L "$DOTFILES_NVIM_TMUX_SERVER" has-session -t "$session_id" 2>/dev/null; then
+            rm -f "$socket"
+        fi
+        return "$rc"
+    }
 
     c() {
         if [ "$#" -gt 0 ]; then

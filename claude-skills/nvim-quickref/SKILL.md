@@ -23,8 +23,8 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 - `clipboard = unnamedplus`；检测到 `$SSH_TTY` / `$SSH_CONNECTION` / `$XDG_SESSION_TYPE=tty` 时自动切到 **OSC 52**（走终端剪贴板，需要 iTerm2/WezTerm/kitty 等允许剪贴板访问，tmux 需 `set-clipboard on`）
 - `autoread` + `updatetime = 500`（缩短 `CursorHold` 触发间隔让外部改动近实时可见）
 - 外部改动侦测：`FocusGained` / `BufEnter` / `CursorHold{,I}` / `TermLeave` 主动 `checktime`；每个文件 buffer 还会跑一个 `uv.new_fs_event` watcher，被外部改动后弹 WARN `文件被外部修改，已重新加载`
-- terminal mode 使用不闪烁的黄色实心块光标；`<leader>t` 打开完整 terminal buffer；`<C-/>` / `<C-_>` 切换普通 shell 并自动进入输入，`<M-/>` 切换 Codex agent 并保持 terminal-normal 方便继续阅读；两个通道共享底部 drawer，但各自保留 buffer / 进程，Codex 首次从当前上下文的 git 根启动
-- Neovim 0.12 live session：`<leader>d` 脱离当前 TUI、保留整个 Nvim 进程；照常运行 `nvim` / `nvim .` 后用 `<leader>fs` 打开 Telescope 会话列表，按项目 / 当前 buffer 选择并重新连接；headless/embed 辅助进程会被过滤
+- terminal mode 使用不闪烁的黄色实心块光标；`<leader>t` 打开完整 terminal buffer；`<C-/>` / `<C-_>` 切换普通 shell 并自动进入输入，`<M-/>` 切换 `codex --yolo` agent 并保持 terminal-normal 方便继续阅读；两个通道共享底部 drawer，但各自保留 buffer / 进程，Codex 首次从当前上下文的 git 根启动
+- Neovim 0.12 live session：交互式 shell 的 `nvim` / `nvim .` / `vim` 由独立的 `dotfiles-nvim-host` tmux server 托管，terminal 意外关闭后进程仍存活；`<leader>d` 主动脱离，重新运行 `nvim` / `nvim .` 后用 `<leader>fs` 按项目 / 当前 buffer 选择并连接；前台仍是直接 remote UI，普通 `tmux ls` 不显示隐藏 host，`:qa` 会清理对应 session / socket
 - netrw 禁用（`vim.g.loaded_netrw = 1`），文件浏览全走 oil
 
 ## 自定义键位（非插件）
@@ -38,7 +38,7 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 | n | `<leader>yp` | 复制当前 buffer 绝对路径到 `+` 和 `"` |
 | n | `<leader>t` | 在当前上下文目录开完整 terminal buffer 并直接进入输入；若当前 buffer 是 terminal，则沿用该 shell cwd |
 | n/i/t | `<C-/>` / `<C-_>` | toggle 底部普通 shell；首次打开按当前上下文目录启动，显示后自动进入输入，隐藏时保留进程 |
-| n/i/t | `<M-/>` | toggle 底部 Codex agent；首次从 git 根启动，显示后停在 terminal-normal，按 `i` / `a` / `A` 再输入 |
+| n/i/t | `<M-/>` | toggle 底部 `codex --yolo` agent；首次从 git 根启动，显示后停在 terminal-normal，按 `i` / `a` / `A` 再输入 |
 | n/i/t | `<M-+>` / `<M-->` / `<M-0>` | 增高 / 降低 / 重置当前底部通道高度；`<M-=>` 也会增高 |
 | n | `<C-d>` / `<C-u>` | 视图下/上滚 6 行，光标尽量留在原位置；可用 `10<C-d>` / `10<C-u>` 临时指定行数 |
 | n | `<C-e>` / `<C-y>` | 原生微滚：视图下/上滚 1 行 |
