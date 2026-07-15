@@ -38,6 +38,267 @@ local view_scroll_lines = 6
 local terminal_cursor_bg = "#ffd866"
 local terminal_cursor_fg = "#1a1b26"
 
+local function has_startup_arg(flag)
+  for _, arg in ipairs(vim.v.argv or {}) do
+    if arg == flag then
+      return true
+    end
+  end
+  return false
+end
+
+-- Nvim 0.12 的普通 TUI 服务端本身也以 --embed 启动，因此不能靠 argv
+-- 区分用户会话和工具进程。真正接入过 UI 的实例才进入会话列表；纯 RPC
+-- embed/headless 辅助进程不会触发 UIEnter，会自然被过滤掉。
+local supports_nvim_sessions = vim.fn.has("nvim-0.12") == 1 and not has_startup_arg("--headless")
+
+vim.g.dotfiles_session_instance = 0
+vim.g.dotfiles_session_last_active = os.time()
+vim.g.dotfiles_session_detached_once = 0
+vim.g.dotfiles_session_had_changes = 0
+
+local session_info_lua = [=[
+if vim.g.dotfiles_session_instance ~= 1 then
+  return nil
+end
+
+local cwd = vim.fn.getcwd()
+local home = vim.uv.os_homedir()
+local project = cwd == home and "~" or vim.fn.fnamemodify(cwd, ":t")
+if project == "" then
+  project = cwd
+end
+
+local bufnr = vim.api.nvim_get_current_buf()
+local name = vim.api.nvim_buf_get_name(bufnr)
+local buftype = vim.bo[bufnr].buftype
+local current_buffer
+if buftype == "terminal" then
+  current_buffer = "[terminal]"
+elseif name == "" then
+  current_buffer = "[No Name]"
+elseif vim.startswith(name, "oil://") then
+  current_buffer = "Oil " .. vim.fn.fnamemodify(name:sub(7), ":~")
+else
+  current_buffer = vim.fn.fnamemodify(name, ":.")
+  if current_buffer == name then
+    current_buffer = vim.fn.fnamemodify(name, ":~")
+  end
+end
+current_buffer = current_buffer:gsub("[\r\n\t]", " ")
+
+local modified_count = 0
+local terminal_count = 0
+for _, buffer in ipairs(vim.api.nvim_list_bufs()) do
+  if vim.api.nvim_buf_is_valid(buffer) then
+    if vim.bo[buffer].modified then
+      modified_count = modified_count + 1
+    end
+    if vim.bo[buffer].buftype == "terminal" then
+      terminal_count = terminal_count + 1
+    end
+  end
+end
+
+local window_count = 0
+for _, win in ipairs(vim.api.nvim_list_wins()) do
+  if vim.api.nvim_win_get_config(win).relative == "" then
+    window_count = window_count + 1
+  end
+end
+
+return {
+  cwd = cwd,
+  project = project,
+  current_buffer = current_buffer,
+  modified_count = modified_count,
+  terminal_count = terminal_count,
+  window_count = window_count,
+  tab_count = #vim.api.nvim_list_tabpages(),
+  ui_count = #vim.api.nvim_list_uis(),
+  pid = vim.fn.getpid(),
+  last_active = vim.g.dotfiles_session_last_active or 0,
+}
+]=]
+
+local function fetch_nvim_session(address)
+  local connect_ok, chan = pcall(vim.fn.sockconnect, "pipe", address, { rpc = true })
+  if not connect_ok or type(chan) ~= "number" or chan <= 0 then
+    return nil
+  end
+
+  local request_ok, info = pcall(vim.rpcrequest, chan, "nvim_exec_lua", session_info_lua, {})
+  pcall(vim.fn.chanclose, chan)
+  if not request_ok or type(info) ~= "table" then
+    return nil
+  end
+
+  info.address = address
+  return info
+end
+
+local function discover_nvim_sessions()
+  local list_ok, addresses = pcall(vim.fn.serverlist, { peer = true })
+  if not list_ok or type(addresses) ~= "table" then
+    return {}
+  end
+
+  local sessions = {}
+  local seen = {}
+  for _, address in ipairs(addresses) do
+    if address ~= vim.v.servername and not seen[address] then
+      seen[address] = true
+      local session = fetch_nvim_session(address)
+      if session then
+        table.insert(sessions, session)
+      end
+    end
+  end
+
+  table.sort(sessions, function(a, b)
+    local a_detached = a.ui_count == 0
+    local b_detached = b.ui_count == 0
+    if a_detached ~= b_detached then
+      return a_detached
+    end
+    if a.last_active ~= b.last_active then
+      return a.last_active > b.last_active
+    end
+    if a.project ~= b.project then
+      return a.project < b.project
+    end
+    return a.pid < b.pid
+  end)
+
+  return sessions
+end
+
+local function current_session_should_survive_switch()
+  if vim.g.dotfiles_session_detached_once == 1 or vim.g.dotfiles_session_had_changes == 1 then
+    return true
+  end
+
+  if #vim.api.nvim_list_tabpages() > 1 then
+    return true
+  end
+
+  local normal_windows = 0
+  for _, win in ipairs(vim.api.nvim_list_wins()) do
+    if vim.api.nvim_win_get_config(win).relative == "" then
+      normal_windows = normal_windows + 1
+    end
+  end
+  if normal_windows > 1 then
+    return true
+  end
+
+  local named_file_buffers = 0
+  for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_valid(bufnr) then
+      if vim.bo[bufnr].modified or vim.bo[bufnr].buftype == "terminal" then
+        return true
+      end
+      if vim.bo[bufnr].buflisted
+        and vim.bo[bufnr].buftype == ""
+        and vim.api.nvim_buf_get_name(bufnr) ~= ""
+      then
+        named_file_buffers = named_file_buffers + 1
+      end
+    end
+  end
+
+  return named_file_buffers > 1
+end
+
+local function connect_to_nvim_session(address, keep_current)
+  vim.g.dotfiles_session_last_active = os.time()
+  local command = keep_current and "connect " or "connect! "
+  local ok, err = pcall(vim.cmd, command .. vim.fn.fnameescape(address))
+  if not ok then
+    vim.notify("连接 Nvim 会话失败: " .. tostring(err), vim.log.levels.ERROR)
+  end
+end
+
+local function detach_nvim_session()
+  if vim.g.dotfiles_session_instance ~= 1 or vim.fn.exists(":detach") ~= 2 then
+    vim.notify("会话脱离需要 Neovim 0.12+ 的普通 TUI 实例", vim.log.levels.ERROR)
+    return
+  end
+
+  vim.g.dotfiles_session_detached_once = 1
+  vim.g.dotfiles_session_last_active = os.time()
+  vim.cmd("detach")
+end
+
+if supports_nvim_sessions then
+  local session_activity_group = vim.api.nvim_create_augroup("DotfilesNvimSessions", { clear = true })
+
+  vim.api.nvim_create_autocmd("UIEnter", {
+    group = session_activity_group,
+    callback = function()
+      vim.g.dotfiles_session_instance = 1
+      vim.g.dotfiles_session_last_active = os.time()
+    end,
+  })
+
+  vim.api.nvim_create_autocmd({ "BufEnter", "CursorMoved", "CursorMovedI", "FocusGained" }, {
+    group = session_activity_group,
+    callback = function()
+      if vim.g.dotfiles_session_instance ~= 1 then
+        return
+      end
+      local now = os.time()
+      if vim.g.dotfiles_session_last_active ~= now then
+        vim.g.dotfiles_session_last_active = now
+      end
+    end,
+  })
+
+  vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
+    group = session_activity_group,
+    callback = function(args)
+      if vim.g.dotfiles_session_instance == 1
+        and vim.api.nvim_buf_is_valid(args.buf)
+        and vim.bo[args.buf].buftype == ""
+        and vim.bo[args.buf].modified
+      then
+        vim.g.dotfiles_session_had_changes = 1
+      end
+    end,
+  })
+
+  vim.api.nvim_create_autocmd("UILeave", {
+    group = session_activity_group,
+    callback = function()
+      if vim.g.dotfiles_session_instance == 1 then
+        vim.g.dotfiles_session_detached_once = 1
+        vim.g.dotfiles_session_last_active = os.time()
+      end
+    end,
+  })
+
+  vim.api.nvim_create_autocmd("VimEnter", {
+    group = session_activity_group,
+    once = true,
+    callback = function()
+      vim.defer_fn(function()
+        if vim.g.dotfiles_session_instance ~= 1 or #vim.api.nvim_list_uis() == 0 then
+          return
+        end
+        local detached_count = 0
+        for _, session in ipairs(discover_nvim_sessions()) do
+          if session.ui_count == 0 then
+            detached_count = detached_count + 1
+          end
+        end
+        if detached_count > 0 then
+          vim.notify(("发现 %d 个已脱离的 Nvim 会话（Space f s）"):format(detached_count))
+        end
+      end, 150)
+    end,
+  })
+end
+
 local treesitter_languages = {
   "lua",
   "python",
@@ -441,6 +702,7 @@ end
 vim.keymap.set({ "n", "i" }, "<F2>", toggle_paste_mode, { desc = "Toggle paste mode" })
 vim.keymap.set("n", "<leader>vp", toggle_paste_mode, { desc = "Toggle paste mode" })
 vim.keymap.set("n", "<leader>z", toggle_window_zoom, { desc = "Toggle window zoom" })
+vim.keymap.set("n", "<leader>d", detach_nvim_session, { desc = "Detach Nvim session" })
 vim.keymap.set("n", "/", function()
   prompt_search_without_jump(true)
 end, { desc = "Search without jumping" })
@@ -1119,6 +1381,10 @@ require("lazy").setup({
       local actions = require("telescope.actions")
       local action_state = require("telescope.actions.state")
       local builtin = require("telescope.builtin")
+      local conf = require("telescope.config").values
+      local entry_display = require("telescope.pickers.entry_display")
+      local finders = require("telescope.finders")
+      local pickers = require("telescope.pickers")
 
       -- 找当前文件所在的项目根目录（git 根，没有则用文件目录）
       local function project_root()
@@ -1141,6 +1407,87 @@ require("lazy").setup({
           no_ignore = true,
           default_text = line,
         })
+      end
+
+      local function show_nvim_sessions()
+        local sessions = discover_nvim_sessions()
+        if #sessions == 0 then
+          vim.notify("没有其他可切换的 Nvim 会话", vim.log.levels.INFO)
+          return
+        end
+
+        -- 在 Telescope 打开浮窗前判断当前实例是否有值得保留的工作状态。
+        -- 新启动的 nvim / nvim . 只是入口，连接后可直接回收；已有布局、
+        -- terminal 或编辑历史的实例则继续留在后台，之后还能切回来。
+        local keep_current = current_session_should_survive_switch()
+        local displayer = entry_display.create({
+          separator = "  ",
+          items = {
+            { width = 8 },
+            { width = 18 },
+            { remaining = true },
+            { width = 16 },
+          },
+        })
+
+        pickers.new({}, {
+          prompt_title = "Nvim Sessions",
+          finder = finders.new_table({
+            results = sessions,
+            entry_maker = function(session)
+              local detached = session.ui_count == 0
+              local status = detached and "DETACHED" or "ATTACHED"
+              local details = ("%dw %dt %d* %dterm"):format(
+                session.window_count,
+                session.tab_count,
+                session.modified_count,
+                session.terminal_count
+              )
+
+              return {
+                value = session,
+                ordinal = table.concat({
+                  status,
+                  session.project,
+                  session.current_buffer,
+                  session.cwd,
+                  session.address,
+                }, " "),
+                display = function()
+                  return displayer({
+                    { status, detached and "DiagnosticOk" or "DiagnosticInfo" },
+                    { session.project, "TelescopeResultsIdentifier" },
+                    session.current_buffer,
+                    { details, "Comment" },
+                  })
+                end,
+              }
+            end,
+          }),
+          sorter = conf.generic_sorter({}),
+          previewer = false,
+          attach_mappings = function(prompt_bufnr, map)
+            local function select_session()
+              local entry = action_state.get_selected_entry()
+              if not entry then
+                return
+              end
+              actions.close(prompt_bufnr)
+              -- Telescope 的 prompt/results/border 是多组浮窗；等它完成清理后再
+              -- 把 UI 交给另一个 server，避免旧会话残留 picker 浮窗。
+              vim.defer_fn(function()
+                connect_to_nvim_session(entry.value.address, keep_current)
+              end, 50)
+            end
+
+            actions.select_default:replace(select_session)
+            -- 这些键在普通文件 picker 中另有含义；会话列表里统一为连接或无操作。
+            map("i", "<M-v>", select_session)
+            map("i", "<M-s>", select_session)
+            map("i", "<C-h>", function() end)
+            return true
+          end,
+        }):find()
       end
 
       telescope.setup({
@@ -1192,6 +1539,7 @@ require("lazy").setup({
       end, { desc = "Live grep (project root)" })
 
       vim.keymap.set("n", "<leader>fb", builtin.buffers, { desc = "Buffers" })
+      vim.keymap.set("n", "<leader>fs", show_nvim_sessions, { desc = "Nvim sessions" })
     end,
   },
   -- Git 侧边栏标记（增删改彩色竖条）

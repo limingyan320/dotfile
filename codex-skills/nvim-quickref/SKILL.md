@@ -24,6 +24,7 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 - `autoread` + `updatetime = 500`（缩短 `CursorHold` 触发间隔让外部改动近实时可见）
 - 外部改动侦测：`FocusGained` / `BufEnter` / `CursorHold{,I}` / `TermLeave` 主动 `checktime`；每个文件 buffer 还会跑一个 `uv.new_fs_event` watcher，被外部改动后弹 WARN `文件被外部修改，已重新加载`
 - terminal mode 使用不闪烁的黄色实心块光标；`<leader>t` 打开完整 terminal buffer；`<C-/>` / `<C-_>` 切换普通 shell 并自动进入输入，`<M-/>` 切换 Codex agent 并保持 terminal-normal 方便继续阅读；两个通道共享底部 drawer，但各自保留 buffer / 进程，Codex 首次从当前上下文的 git 根启动
+- Neovim 0.12 live session：`<leader>d` 脱离当前 TUI、保留整个 Nvim 进程；照常运行 `nvim` / `nvim .` 后用 `<leader>fs` 打开 Telescope 会话列表，按项目 / 当前 buffer 选择并重新连接；headless/embed 辅助进程会被过滤
 - netrw 禁用（`vim.g.loaded_netrw = 1`），文件浏览全走 oil
 
 ## 自定义键位（非插件）
@@ -33,6 +34,7 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 | n/i | `<F2>` | toggle paste mode |
 | n | `<leader>vp` | toggle paste mode |
 | n | `<leader>z` | 像 tmux `prefix z` 一样临时放大当前窗口；再按一次恢复原分屏布局 |
+| n | `<leader>d` | detach 当前 Nvim UI，完整保留窗口、buffer、terminal / Codex 进程供稍后恢复 |
 | n | `<leader>yp` | 复制当前 buffer 绝对路径到 `+` 和 `"` |
 | n | `<leader>t` | 在当前上下文目录开完整 terminal buffer 并直接进入输入；若当前 buffer 是 terminal，则沿用该 shell cwd |
 | n/i/t | `<C-/>` / `<C-_>` | toggle 底部普通 shell；首次打开按当前上下文目录启动，显示后自动进入输入，隐藏时保留进程 |
@@ -106,6 +108,7 @@ file_browser 扩展 opts：`hidden = true`, `grouped = true`（目录排前面�
 | `<C-p>` | 普通文件里 `find_files({ cwd = project_root() })`；oil 目录视图里用当前 oil 目录 |
 | `<leader>fg` | `live_grep({ cwd = project_root() })` |
 | `<leader>fb` | `buffers` |
+| `<leader>fs` | live Nvim sessions；显示 detached/attached、项目、当前 buffer、窗口/标签/修改/terminal 数，`Enter` 连接 |
 | `<leader>fe` | file_browser（项目根，`select_buffer`） |
 | `<leader>fE` | file_browser（`%:p:h`，当前文件目录） |
 
