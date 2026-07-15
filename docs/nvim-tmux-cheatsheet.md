@@ -85,6 +85,7 @@ Neovim 0.12 可以把当前 TUI 脱离，但让原来的 Nvim 进程继续在后
 | Session Manager 内 `Enter` | 连接到目标 session；选择 `CURRENT` 时关闭列表并回到当前视图 |
 | Session Manager 内 `c` | 浮窗输入名称，在当前 cwd 创建新 session、保留旧 session 并立即切换 |
 | Session Manager 内 `r` / `Ctrl+R` | 浮窗重命名选中的 session；insert mode 下也可用 `Ctrl+R` |
+| Session Manager 内 `dd` | 删除选中的非当前 session；浮窗默认停在 `Cancel`，确认前显示未保存 buffer、terminal 和已连接 UI 风险 |
 | Session Manager 内 `i` / `a` | 进入 insert mode，按名称、项目、buffer、cwd 搜索 |
 | Session Manager 内 `?` | 显示 Telescope 快捷键帮助 |
 
@@ -97,6 +98,8 @@ Space f s
 ```
 
 列表按 `CURRENT`、`DETACHED`、`ATTACHED` 排序，并显示逻辑名称（未命名时回退为项目名）、当前 buffer 和 `窗口数w 标签数t 修改数* terminal数term`，不会要求记 socket 路径。名称保存在 Nvim server 内，terminal 关闭或 detach 后仍在，`:qa` 后随 session 一起消失。headless / embed 辅助进程不会出现；启动时若存在 detached 会话，只会轻量提示数量，不会打断 `nvim .` 的 Oil 视图。
+
+`dd` 会强制结束目标 session，因此未保存修改和其中的 terminal 进程都会关闭；目标仍有其他 UI 连接时也会明确提示。确认框默认选中 `Cancel`，`Esc` 也会取消。`CURRENT` 不允许从管理器删除，需明确使用 `:qa` / `:qa!` 退出当前 Nvim。
 
 从刚启动的未命名空白 `nvim` / `nvim .` 连接时，这个入口实例会自动回收；如果当前实例已命名、已有分屏、多个 buffer、未保存修改、terminal，或它本身曾被 detach，则切换后仍留在后台，可以再通过 `Space fs` 切回来。
 

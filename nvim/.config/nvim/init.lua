@@ -442,11 +442,14 @@ end
 
 local function stop_managed_nvim_session(address)
   local session_id = managed_nvim_session_id(address)
-  if not session_id or vim.fn.executable("tmux") ~= 1 then
-    return
+  if not session_id then
+    return false, "不是受托管的 Nvim session"
+  end
+  if vim.fn.executable("tmux") ~= 1 then
+    return false, "找不到 tmux，无法清理托管 session"
   end
 
-  vim.system({
+  local result = vim.system({
     "tmux",
     "-L",
     managed_nvim_tmux_server,
@@ -458,6 +461,67 @@ local function stop_managed_nvim_session(address)
   if stat and stat.type == "socket" then
     uv.fs_unlink(address)
   end
+  if result.code ~= 0 then
+    local detail = vim.trim(result.stderr or "")
+    return false, detail ~= "" and detail or "隐藏 tmux session 未能停止"
+  end
+  return true
+end
+
+local stop_session_lua = [=[
+vim.schedule(function()
+  vim.cmd("qa!")
+end)
+return true
+]=]
+
+local function stop_nvim_session(session, callback)
+  if session.current or session.address == vim.v.servername then
+    callback(false, "当前 session 不能从 Session Manager 删除")
+    return
+  end
+
+  local function force_stop_managed()
+    local stopped, err = stop_managed_nvim_session(session.address)
+    callback(stopped, err)
+  end
+
+  local connect_ok, chan = pcall(vim.fn.sockconnect, "pipe", session.address, { rpc = true })
+  if not connect_ok or type(chan) ~= "number" or chan <= 0 then
+    if managed_nvim_session_id(session.address) then
+      force_stop_managed()
+    else
+      callback(false, "目标 session 已不可用")
+    end
+    return
+  end
+
+  -- 让目标 Nvim 在当前 RPC 返回后自行退出，避免 qa! 让请求半途断开。
+  local request_ok, accepted = pcall(vim.rpcrequest, chan, "nvim_exec_lua", stop_session_lua, {})
+  pcall(vim.fn.chanclose, chan)
+  if not request_ok or accepted ~= true then
+    if managed_nvim_session_id(session.address) then
+      force_stop_managed()
+    else
+      callback(false, tostring(accepted))
+    end
+    return
+  end
+
+  local attempts = 0
+  local function wait_for_exit()
+    attempts = attempts + 1
+    if not fetch_nvim_session(session.address) then
+      callback(true)
+    elseif attempts < 5 then
+      vim.defer_fn(wait_for_exit, 100)
+    elseif managed_nvim_session_id(session.address) then
+      force_stop_managed()
+    else
+      callback(false, "目标 session 未能退出")
+    end
+  end
+  vim.defer_fn(wait_for_exit, 100)
 end
 
 local function connect_to_nvim_session(address, keep_current)
@@ -1639,7 +1703,24 @@ require("lazy").setup({
             title_pos = "center",
             prefer_width = 40,
           },
-          select = { enabled = false },
+          select = {
+            enabled = true,
+            get_config = function(opts)
+              if opts.kind == "dotfiles_nvim_session_delete" then
+                return {
+                  backend = "builtin",
+                  builtin = {
+                    show_numbers = false,
+                    min_height = 2,
+                    max_height = 2,
+                    min_width = { 40, 0.2 },
+                    max_width = { 100, 0.8 },
+                  },
+                }
+              end
+              return { enabled = false }
+            end,
+          },
         },
       },
     },
@@ -1676,7 +1757,7 @@ require("lazy").setup({
         })
       end
 
-      local function show_nvim_sessions(default_text)
+      local function show_nvim_sessions(default_text, default_selection_index)
         local sessions = discover_nvim_sessions()
 
         -- 在 Telescope 打开浮窗前判断当前实例是否有值得保留的工作状态。
@@ -1743,11 +1824,12 @@ require("lazy").setup({
           }),
           sorter = conf.generic_sorter({}),
           sorting_strategy = "ascending",
+          default_selection_index = default_selection_index,
           previewer = false,
           attach_mappings = function(prompt_bufnr, map)
-            local function reopen_sessions(default_text)
+            local function reopen_sessions(query, selection_index)
               vim.schedule(function()
-                show_nvim_sessions(default_text)
+                show_nvim_sessions(query, selection_index)
               end)
             end
 
@@ -1823,11 +1905,68 @@ require("lazy").setup({
               end)
             end
 
+            local function delete_session()
+              local entry = action_state.get_selected_entry()
+              if not entry then
+                return
+              end
+              if entry.value.current then
+                vim.notify("当前 session 无法在管理器中删除，请使用 :qa 或 :qa!", vim.log.levels.WARN)
+                return
+              end
+
+              local query = action_state.get_current_line()
+              local picker = action_state.get_current_picker(prompt_bufnr)
+              local selected_index = picker:get_index(picker:get_selection_row())
+              local next_index = math.min(selected_index, math.max(picker.manager:num_results() - 1, 1))
+              local display_name = entry.value.name ~= "" and entry.value.name or entry.value.project
+              local risks = {}
+              if entry.value.modified_count > 0 then
+                local suffix = entry.value.modified_count == 1 and "buffer" or "buffers"
+                table.insert(risks, ("%d modified %s"):format(entry.value.modified_count, suffix))
+              end
+              if entry.value.terminal_count > 0 then
+                local suffix = entry.value.terminal_count == 1 and "terminal" or "terminals"
+                table.insert(risks, ("%d %s"):format(entry.value.terminal_count, suffix))
+              end
+              if entry.value.ui_count > 0 then
+                local suffix = entry.value.ui_count == 1 and "attached UI" or "attached UIs"
+                table.insert(risks, ("%d %s"):format(entry.value.ui_count, suffix))
+              end
+              local delete_label = "Delete - force close this session"
+              if #risks > 0 then
+                delete_label = "Delete - closes " .. table.concat(risks, ", ")
+              end
+
+              actions.close(prompt_bufnr)
+              vim.schedule(function()
+                vim.ui.select({ "Cancel", delete_label }, {
+                  prompt = ("Delete session %q?"):format(display_name),
+                  kind = "dotfiles_nvim_session_delete",
+                }, function(choice)
+                  if choice ~= delete_label then
+                    reopen_sessions(query, selected_index)
+                    return
+                  end
+
+                  stop_nvim_session(entry.value, function(stopped, err)
+                    if stopped then
+                      vim.notify(("Deleted Nvim session %q"):format(display_name))
+                    else
+                      vim.notify("删除 Nvim session 失败: " .. tostring(err), vim.log.levels.ERROR)
+                    end
+                    reopen_sessions(query, stopped and next_index or selected_index)
+                  end)
+                end)
+              end)
+            end
+
             actions.select_default:replace(select_session)
             map("n", "c", create_session, { desc = "Create session" })
             map("n", "r", rename_session, { desc = "Rename session" })
             map("n", "<C-r>", rename_session, { desc = "Rename session" })
             map("i", "<C-r>", rename_session, { desc = "Rename session" })
+            map("n", "dd", delete_session, { desc = "Delete session" })
             -- 这些键在普通文件 picker 中另有含义；会话列表里不提供分屏打开。
             map("i", "<M-v>", select_session)
             map("i", "<M-s>", select_session)
