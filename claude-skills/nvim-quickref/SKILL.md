@@ -23,7 +23,7 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 - `clipboard = unnamedplus`；检测到 `$SSH_TTY` / `$SSH_CONNECTION` / `$XDG_SESSION_TYPE=tty` 时自动切到 **OSC 52**（走终端剪贴板，需要 iTerm2/WezTerm/kitty 等允许剪贴板访问，tmux 需 `set-clipboard on`）
 - `autoread` + `updatetime = 500`（缩短 `CursorHold` 触发间隔让外部改动近实时可见）
 - 外部改动侦测：`FocusGained` / `BufEnter` / `CursorHold{,I}` / `TermLeave` 主动 `checktime`；每个文件 buffer 还会跑一个 `uv.new_fs_event` watcher，被外部改动后弹 WARN `文件被外部修改，已重新加载`
-- terminal mode 使用不闪烁的黄色实心块光标；`<leader>t` 打开完整 terminal buffer；`<C-/>` / `<C-_>` 切换底部 terminal 面板，隐藏时保留 shell 状态；面板窗口被改作普通编辑后，再次 toggle 会保留该编辑窗口并重新打开终端
+- terminal mode 使用不闪烁的黄色实心块光标；`<leader>t` 打开完整 terminal buffer；`<C-/>` / `<C-_>` 切换普通 shell 并自动进入输入，`<M-/>` 切换 Codex agent 并保持 terminal-normal 方便继续阅读；两个通道共享底部 drawer，但各自保留 buffer / 进程，Codex 首次从当前上下文的 git 根启动
 - netrw 禁用（`vim.g.loaded_netrw = 1`），文件浏览全走 oil
 
 ## 自定义键位（非插件）
@@ -35,8 +35,9 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 | n | `<leader>z` | 像 tmux `prefix z` 一样临时放大当前窗口；再按一次恢复原分屏布局 |
 | n | `<leader>yp` | 复制当前 buffer 绝对路径到 `+` 和 `"` |
 | n | `<leader>t` | 在当前上下文目录开完整 terminal buffer 并直接进入输入；若当前 buffer 是 terminal，则沿用该 shell cwd |
-| n/i/t | `<C-/>` / `<C-_>` | toggle 底部 terminal 面板；首次打开按当前上下文目录启动 shell，隐藏时保留 shell 状态 |
-| n/i/t | `<M-+>` / `<M-->` / `<M-0>` | 增高 / 降低 / 重置底部 terminal 面板高度；`<M-=>` 也会增高 |
+| n/i/t | `<C-/>` / `<C-_>` | toggle 底部普通 shell；首次打开按当前上下文目录启动，显示后自动进入输入，隐藏时保留进程 |
+| n/i/t | `<M-/>` | toggle 底部 Codex agent；首次从 git 根启动，显示后停在 terminal-normal，按 `i` / `a` / `A` 再输入 |
+| n/i/t | `<M-+>` / `<M-->` / `<M-0>` | 增高 / 降低 / 重置当前底部通道高度；`<M-=>` 也会增高 |
 | n | `<C-d>` / `<C-u>` | 视图下/上滚 6 行，光标尽量留在原位置；可用 `10<C-d>` / `10<C-u>` 临时指定行数 |
 | n | `<C-e>` / `<C-y>` | 原生微滚：视图下/上滚 1 行 |
 | i | `<CR>` | 智能回车：已选中补全项时确认；否则正常换行；在 `{}` / `[]` / `()` 中间会自动拆行并对齐闭括号 |

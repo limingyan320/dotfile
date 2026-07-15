@@ -138,10 +138,13 @@ browser 内（telescope 默认键）：
 |------|------|
 | `Space yp` | 任意 buffer 里复制当前文件的**绝对路径** |
 | `Space t` | 在当前上下文目录开完整 terminal buffer 并直接进入输入；如果当前 buffer 就是 terminal，会沿用该 shell 的 cwd |
-| `Ctrl+/` | 底部 terminal 面板开关；首次打开会按当前上下文目录启动 shell，再按隐藏但保留 shell 状态 |
-| `Option + +` / `Option + -` / `Option + 0` | 增高 / 降低 / 重置底部 terminal 面板高度 |
+| `Ctrl+/` | 底部普通 shell 开关；首次按当前上下文目录启动，显示后自动进入输入，隐藏时保留进程（`Ctrl+_` 也兼容） |
+| `Option + /` | 底部 Codex agent 开关；首次从当前上下文的 Git 根启动，显示后停在 terminal-normal，隐藏时保留对话进程 |
+| `Option + +` / `Option + -` / `Option + 0` | 增高 / 降低 / 重置当前底部通道高度 |
 
-> terminal 面板默认高 12 行，打开后直接进入输入；normal / insert / terminal 模式都可用 `Ctrl+/` toggle。终端实际发送 `<C-_>` 时也已兼容。若把面板窗口改作普通编辑 buffer，再按 `Ctrl+/` 会保留该编辑窗口并重新打开底部终端。`Option + +` 在部分终端里会发成 `<M-=>`，已一起兼容。
+> 普通 shell 和 Codex 各自保留独立的 terminal buffer / 进程，但共用同一个底部 drawer，所以互相切换不会堆叠窗口或丢失 shell / 对话状态。普通 shell 显示后自动进入 terminal 输入；Codex 显示后保持 terminal-normal 和原来的阅读位置，需要回复时按 `i` / `a` / `A` 进入输入。普通 shell 默认高 12 行；Codex 默认至少 12 行，并尽量占屏幕高度的 45%。normal / insert / terminal 模式下都能直接切换。若把 drawer 窗口改作普通编辑 buffer，下次 toggle 会保留该编辑窗口并另开 drawer。`Option + +` 在部分终端里会发成 `<M-=>`，已一起兼容。
+
+> Codex 通道在一次 Neovim 运行期间只维护一个会话；切换到其他项目后仍会回到原对话。Codex 进程退出后，隐藏并重新打开会从当前项目启动新会话；若 `codex` 不在 `PATH` 中则会提示错误。
 
 > 外部工具（如 Claude）改了文件，nvim 会在光标停 0.5 秒内自动重新加载并提示。
 

@@ -367,6 +367,22 @@ local function buffer_context_dir(bufnr)
   return vim.fn.getcwd()
 end
 
+local function project_context_dir(bufnr)
+  local dir = buffer_context_dir(bufnr)
+  if not dir or vim.fn.isdirectory(dir) == 0 then
+    dir = vim.fn.getcwd()
+  end
+
+  if vim.fn.executable("git") == 1 then
+    local git_root = vim.fn.systemlist({ "git", "-C", dir, "rev-parse", "--show-toplevel" })[1]
+    if vim.v.shell_error == 0 and git_root and git_root ~= "" then
+      return vim.trim(git_root)
+    end
+  end
+
+  return dir
+end
+
 local function open_oil_from_context()
   local dir = buffer_context_dir(0)
   if not dir or vim.fn.isdirectory(dir) == 0 then
@@ -565,17 +581,39 @@ end
 
 vim.keymap.set("n", "<leader>t", open_full_terminal, { desc = "Terminal in current context dir" })
 
-local terminal_panel = {
-  buf = nil,
+local terminal_drawer = {
   win = nil,
   win_options = nil,
-  height = 12,
-  default_height = 12,
+  active = "shell",
   min_height = 5,
   step = 2,
 }
 
-local function restore_terminal_panel_window_options(win, options)
+local terminal_sessions = {
+  shell = {
+    buf = nil,
+    command = function()
+      return vim.o.shell
+    end,
+    context_dir = buffer_context_dir,
+    start_insert = true,
+    default_height = function()
+      return 12
+    end,
+  },
+  codex = {
+    buf = nil,
+    command = { "codex" },
+    executable = "codex",
+    context_dir = project_context_dir,
+    start_insert = false,
+    default_height = function()
+      return math.max(12, math.floor(vim.o.lines * 0.45))
+    end,
+  },
+}
+
+local function restore_terminal_drawer_window_options(win, options)
   if not win or not vim.api.nvim_win_is_valid(win) or not options then
     return
   end
@@ -585,28 +623,30 @@ local function restore_terminal_panel_window_options(win, options)
   end
 end
 
-local function visible_terminal_panel_win()
-  local win = terminal_panel.win
+local function visible_terminal_drawer_win()
+  local win = terminal_drawer.win
   if not win or not vim.api.nvim_win_is_valid(win) then
-    terminal_panel.win = nil
-    terminal_panel.win_options = nil
+    terminal_drawer.win = nil
+    terminal_drawer.win_options = nil
     return nil
   end
 
-  if not terminal_panel.buf
-    or not vim.api.nvim_buf_is_valid(terminal_panel.buf)
-    or vim.api.nvim_win_get_buf(win) ~= terminal_panel.buf
+  local session = terminal_sessions[terminal_drawer.active]
+  if not session
+    or not session.buf
+    or not vim.api.nvim_buf_is_valid(session.buf)
+    or vim.api.nvim_win_get_buf(win) ~= session.buf
   then
-    restore_terminal_panel_window_options(win, terminal_panel.win_options)
-    terminal_panel.win = nil
-    terminal_panel.win_options = nil
+    restore_terminal_drawer_window_options(win, terminal_drawer.win_options)
+    terminal_drawer.win = nil
+    terminal_drawer.win_options = nil
     return nil
   end
 
   return win
 end
 
-local function terminal_panel_job_running(bufnr)
+local function terminal_job_running(bufnr)
   if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
     return false
   end
@@ -615,104 +655,173 @@ local function terminal_panel_job_running(bufnr)
   return type(job_id) == "number" and vim.fn.jobwait({ job_id }, 0)[1] == -1
 end
 
-local function open_terminal_panel()
-  local dir = buffer_context_dir(0)
+local function terminal_drawer_max_height()
+  local screen_cap = math.max(terminal_drawer.min_height, vim.o.lines - 5)
+  return math.min(screen_cap, math.max(terminal_drawer.min_height, math.floor(vim.o.lines * 0.7)))
+end
+
+local function clamp_terminal_height(height)
+  return math.max(terminal_drawer.min_height, math.min(terminal_drawer_max_height(), height))
+end
+
+local function terminal_session_height(session)
+  if not session.height then
+    session.height = session.default_height()
+  end
+  session.height = clamp_terminal_height(session.height)
+  return session.height
+end
+
+local function create_terminal_drawer(height)
+  vim.cmd("botright " .. height .. "split")
+  terminal_drawer.win = vim.api.nvim_get_current_win()
+  terminal_drawer.win_options = {
+    winfixheight = vim.wo[terminal_drawer.win].winfixheight,
+    number = vim.wo[terminal_drawer.win].number,
+    relativenumber = vim.wo[terminal_drawer.win].relativenumber,
+    signcolumn = vim.wo[terminal_drawer.win].signcolumn,
+  }
+  vim.wo[terminal_drawer.win].winfixheight = true
+  vim.wo[terminal_drawer.win].number = false
+  vim.wo[terminal_drawer.win].relativenumber = false
+  vim.wo[terminal_drawer.win].signcolumn = "no"
+  return terminal_drawer.win
+end
+
+local function open_terminal_session(name)
+  local session = terminal_sessions[name]
+  if not session then
+    return
+  end
+  if session.executable and vim.fn.executable(session.executable) ~= 1 then
+    vim.notify(session.executable .. " 不在 PATH 中，无法启动 agent", vim.log.levels.ERROR)
+    return
+  end
+
+  local source_buf = vim.api.nvim_get_current_buf()
+  local dir = session.context_dir(source_buf)
   if not dir or vim.fn.isdirectory(dir) == 0 then
     dir = vim.fn.getcwd()
   end
 
-  vim.cmd("botright " .. terminal_panel.height .. "split")
-  terminal_panel.win = vim.api.nvim_get_current_win()
-  terminal_panel.win_options = {
-    winfixheight = vim.wo[terminal_panel.win].winfixheight,
-    number = vim.wo[terminal_panel.win].number,
-    relativenumber = vim.wo[terminal_panel.win].relativenumber,
-    signcolumn = vim.wo[terminal_panel.win].signcolumn,
-  }
-  vim.wo[terminal_panel.win].winfixheight = true
-  vim.wo[terminal_panel.win].number = false
-  vim.wo[terminal_panel.win].relativenumber = false
-  vim.wo[terminal_panel.win].signcolumn = "no"
-
-  if terminal_panel_job_running(terminal_panel.buf) then
-    vim.api.nvim_win_set_buf(terminal_panel.win, terminal_panel.buf)
-  else
-    vim.cmd("enew")
-    terminal_panel.buf = vim.api.nvim_get_current_buf()
-    vim.bo[terminal_panel.buf].buflisted = false
-    vim.bo[terminal_panel.buf].bufhidden = "hide"
-    vim.fn.termopen(vim.o.shell, { cwd = dir })
+  local height = terminal_session_height(session)
+  local drawer_win = visible_terminal_drawer_win()
+  if not drawer_win then
+    drawer_win = create_terminal_drawer(height)
   end
 
-  local panel_win = terminal_panel.win
+  terminal_drawer.active = name
+  if terminal_job_running(session.buf) then
+    vim.api.nvim_win_set_buf(drawer_win, session.buf)
+  else
+    if session.buf and vim.api.nvim_buf_is_valid(session.buf) then
+      pcall(vim.api.nvim_buf_delete, session.buf, { force = true })
+    end
+    vim.api.nvim_set_current_win(drawer_win)
+    vim.cmd("enew")
+    session.buf = vim.api.nvim_get_current_buf()
+    vim.bo[session.buf].buflisted = false
+    vim.bo[session.buf].bufhidden = "hide"
+    local command = type(session.command) == "function" and session.command() or session.command
+    vim.fn.termopen(command, { cwd = dir })
+  end
+
+  vim.api.nvim_win_set_height(drawer_win, height)
+  vim.wo[drawer_win].winfixheight = true
+
+  local session_buf = session.buf
   vim.schedule(function()
-    if terminal_panel.win == panel_win
-      and vim.api.nvim_win_is_valid(panel_win)
-      and vim.api.nvim_win_get_buf(panel_win) == terminal_panel.buf
+    if terminal_drawer.win == drawer_win
+      and terminal_drawer.active == name
+      and vim.api.nvim_win_is_valid(drawer_win)
+      and vim.api.nvim_win_get_buf(drawer_win) == session_buf
     then
-      vim.api.nvim_set_current_win(panel_win)
-      vim.cmd("startinsert")
+      vim.api.nvim_set_current_win(drawer_win)
+      vim.cmd(session.start_insert and "startinsert" or "stopinsert")
     end
   end)
 end
 
-local function terminal_panel_max_height()
-  local screen_cap = math.max(terminal_panel.min_height, vim.o.lines - 5)
-  return math.min(screen_cap, math.max(terminal_panel.min_height, math.floor(vim.o.lines * 0.7)))
-end
+local function set_active_terminal_height(height)
+  local session = terminal_sessions[terminal_drawer.active]
+  if not session then
+    return
+  end
+  session.height = clamp_terminal_height(height)
 
-local function set_terminal_panel_height(height)
-  terminal_panel.height = math.max(terminal_panel.min_height, math.min(terminal_panel_max_height(), height))
-
-  local panel_win = visible_terminal_panel_win()
-  if panel_win then
-    vim.api.nvim_win_set_height(panel_win, terminal_panel.height)
-    vim.wo[panel_win].winfixheight = true
+  local drawer_win = visible_terminal_drawer_win()
+  if drawer_win then
+    vim.api.nvim_win_set_height(drawer_win, session.height)
+    vim.wo[drawer_win].winfixheight = true
   end
 end
 
-local function resize_terminal_panel(delta)
-  set_terminal_panel_height(terminal_panel.height + delta)
+local function resize_active_terminal(delta)
+  local session = terminal_sessions[terminal_drawer.active]
+  if session then
+    set_active_terminal_height(terminal_session_height(session) + delta)
+  end
 end
 
-local function reset_terminal_panel_height()
-  set_terminal_panel_height(terminal_panel.default_height)
+local function reset_active_terminal_height()
+  local session = terminal_sessions[terminal_drawer.active]
+  if session then
+    set_active_terminal_height(session.default_height())
+  end
 end
 
-local function toggle_terminal_panel()
-  local panel_win = visible_terminal_panel_win()
-  if panel_win then
+local function hide_terminal_drawer()
+  local drawer_win = visible_terminal_drawer_win()
+  if drawer_win then
     if #vim.api.nvim_tabpage_list_wins(0) == 1 then
       local replacement_buf = vim.api.nvim_create_buf(true, false)
-      vim.api.nvim_win_set_buf(panel_win, replacement_buf)
-      restore_terminal_panel_window_options(panel_win, terminal_panel.win_options)
+      vim.api.nvim_win_set_buf(drawer_win, replacement_buf)
+      restore_terminal_drawer_window_options(drawer_win, terminal_drawer.win_options)
     else
-      vim.api.nvim_win_close(panel_win, false)
+      vim.api.nvim_win_close(drawer_win, false)
     end
-    terminal_panel.win = nil
-    terminal_panel.win_options = nil
+    terminal_drawer.win = nil
+    terminal_drawer.win_options = nil
+    return
+  end
+end
+
+local function toggle_terminal_session(name)
+  local drawer_win = visible_terminal_drawer_win()
+  if drawer_win and terminal_drawer.active == name then
+    hide_terminal_drawer()
     return
   end
 
-  open_terminal_panel()
+  open_terminal_session(name)
 end
 
-for _, key in ipairs({ "<C-/>", "<C-_>" }) do
-  vim.keymap.set({ "n", "i" }, key, toggle_terminal_panel, { desc = "Toggle terminal panel" })
-  vim.keymap.set("t", key, function()
-    vim.cmd("stopinsert")
-    vim.schedule(toggle_terminal_panel)
-  end, { desc = "Toggle terminal panel" })
+local function map_terminal_session(keys, name, desc)
+  for _, key in ipairs(keys) do
+    vim.keymap.set({ "n", "i" }, key, function()
+      toggle_terminal_session(name)
+    end, { desc = desc })
+    vim.keymap.set("t", key, function()
+      vim.cmd("stopinsert")
+      vim.schedule(function()
+        toggle_terminal_session(name)
+      end)
+    end, { desc = desc })
+  end
 end
+
+map_terminal_session({ "<C-/>", "<C-_>" }, "shell", "Toggle shell terminal")
+map_terminal_session({ "<M-/>" }, "codex", "Toggle Codex agent")
+
 for _, key in ipairs({ "<M-+>", "<M-=>" }) do
   vim.keymap.set({ "n", "i", "t" }, key, function()
-    resize_terminal_panel(terminal_panel.step)
-  end, { desc = "Increase terminal panel height" })
+    resize_active_terminal(terminal_drawer.step)
+  end, { desc = "Increase active terminal height" })
 end
 vim.keymap.set({ "n", "i", "t" }, "<M-->", function()
-  resize_terminal_panel(-terminal_panel.step)
-end, { desc = "Decrease terminal panel height" })
-vim.keymap.set({ "n", "i", "t" }, "<M-0>", reset_terminal_panel_height, { desc = "Reset terminal panel height" })
+  resize_active_terminal(-terminal_drawer.step)
+end, { desc = "Decrease active terminal height" })
+vim.keymap.set({ "n", "i", "t" }, "<M-0>", reset_active_terminal_height, { desc = "Reset active terminal height" })
 
 vim.opt.termguicolors = true
 
