@@ -45,7 +45,52 @@ local function follow(reference, cursor_col, expected_path, expected_line, expec
   assert_equal(vim.api.nvim_win_get_buf(drawer_win), codex_buf, "Codex drawer should stay open")
 end
 
+local function reject(reference, cursor_col)
+  vim.api.nvim_set_current_win(drawer_win)
+  vim.api.nvim_buf_set_lines(codex_buf, 0, -1, false, { reference })
+  vim.api.nvim_win_set_cursor(drawer_win, { 1, cursor_col })
+
+  local notification
+  local original_notify = vim.notify
+  vim.notify = function(message)
+    notification = message
+  end
+  local gx = vim.fn.maparg("gx", "n", false, true)
+  gx.callback()
+  vim.notify = original_notify
+
+  assert_equal(vim.api.nvim_get_current_win(), drawer_win, "non-path context should stay in Codex")
+  assert_equal(notification, "光标下没有可打开的 Codex 路径", "non-path context notification")
+end
+
+local function visual_follow(text, reference, expected_path, expected_line, expected_column)
+  vim.api.nvim_set_current_win(drawer_win)
+  vim.api.nvim_buf_set_lines(codex_buf, 0, -1, false, { text })
+  local start_col = assert(text:find(reference, 1, true)) - 1
+  vim.api.nvim_win_set_cursor(drawer_win, { 1, start_col })
+  vim.cmd("normal! v")
+  vim.api.nvim_win_set_cursor(drawer_win, { 1, start_col + #reference - 1 })
+
+  local gx = vim.fn.maparg("gx", "x", false, true)
+  assert_equal(gx.buffer, 1, "visual gx should be buffer-local")
+  assert(type(gx.callback) == "function", "visual Codex gx callback is missing")
+  gx.callback()
+
+  assert_equal(vim.api.nvim_get_current_win(), editor_win, "visual gx should focus the editor window")
+  assert_equal(vim.api.nvim_buf_get_name(0), vim.fs.joinpath(root, expected_path), "visual gx opened path")
+  assert_equal(
+    vim.api.nvim_win_get_cursor(0),
+    { expected_line, expected_column - 1 },
+    "visual gx cursor location"
+  )
+  assert_equal(vim.api.nvim_win_get_buf(drawer_win), codex_buf, "visual gx should leave Codex open")
+end
+
 follow("docs/nvim-tmux-cheatsheet.md:175:3", 8, "docs/nvim-tmux-cheatsheet.md", 175, 3)
+follow("docs/nvim-tmux-cheatsheet.md:175:3。", 8, "docs/nvim-tmux-cheatsheet.md", 175, 3)
+local inline_context = "rules docs/nvim-tmux-cheatsheet.md:175，PDF text follows"
+follow(inline_context, 12, "docs/nvim-tmux-cheatsheet.md", 175, 1)
+reject(inline_context, assert(inline_context:find("PDF", 1, true)) - 1)
 follow(
   "[config](nvim/.config/nvim/init.lua:20:2)",
   3,
@@ -54,6 +99,13 @@ follow(
   2
 )
 follow("nvim/.config/nvim/init.lua#L30C4", 32, "nvim/.config/nvim/init.lua", 30, 4)
+visual_follow(
+  "open docs/nvim-tmux-cheatsheet.md:175:3 please",
+  "docs/nvim-tmux-cheatsheet.md:175:3",
+  "docs/nvim-tmux-cheatsheet.md",
+  175,
+  3
+)
 
 vim.fs.rm(fake_bin, { recursive = true, force = true })
 print("codex gx integration: ok")

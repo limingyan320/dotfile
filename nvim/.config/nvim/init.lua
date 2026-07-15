@@ -1454,6 +1454,73 @@ local function delimited_reference_at_cursor(line, cursor_col, pattern)
   end
 end
 
+local codex_reference_unicode_suffixes = {
+  "。",
+  "，",
+  "；",
+  "！",
+  "？",
+  "、",
+  "）",
+  "】",
+  "》",
+  "」",
+  "』",
+  "”",
+  "’",
+}
+
+local function trim_codex_reference_suffix(reference)
+  reference = reference:gsub("[%[%]%(%)%{%}<>,;.!?`'\"|]+$", "")
+  while reference ~= "" do
+    local trimmed = false
+    for _, suffix in ipairs(codex_reference_unicode_suffixes) do
+      if vim.endswith(reference, suffix) then
+        reference = reference:sub(1, #reference - #suffix)
+        reference = reference:gsub("[%[%]%(%)%{%}<>,;.!?`'\"|]+$", "")
+        trimmed = true
+        break
+      end
+    end
+    if not trimmed then
+      break
+    end
+  end
+  return reference
+end
+
+local codex_reference_location_patterns = {
+  "^(.+:%d+:%d+)()",
+  "^(.+:%d+)()",
+  "^(.+#L%d+C%d+)()",
+  "^(.+#L%d+)()",
+}
+
+local function truncate_codex_reference_context(reference, cursor_col)
+  for _, pattern in ipairs(codex_reference_location_patterns) do
+    local location, context_col = reference:match(pattern)
+    if location then
+      local separator_length = reference:sub(context_col, context_col):match("[,;.!?]") and 1 or nil
+      if not separator_length then
+        for _, separator in ipairs(codex_reference_unicode_suffixes) do
+          if reference:sub(context_col, context_col + #separator - 1) == separator then
+            separator_length = #separator
+            break
+          end
+        end
+      end
+
+      if separator_length then
+        if cursor_col <= #location + separator_length then
+          return location
+        end
+        return nil
+      end
+    end
+  end
+  return reference
+end
+
 local function codex_reference_at_cursor()
   local hyperlink = terminal_hyperlink_at_cursor()
   if hyperlink then
@@ -1482,8 +1549,28 @@ local function codex_reference_at_cursor()
   end
 
   reference = line:sub(start_col, end_col)
+  reference = truncate_codex_reference_context(reference, cursor_col - start_col + 1)
+  if not reference then
+    return nil
+  end
   reference = reference:gsub("^[%[%]%(%)%{%}<>`'\"|]+", "")
-  reference = reference:gsub("[%[%]%(%)%{%}<>,;.!?`'\"|]+$", "")
+  reference = trim_codex_reference_suffix(reference)
+  return reference ~= "" and reference or nil
+end
+
+local function codex_reference_from_selection()
+  if vim.fn.mode() ~= "v" then
+    return nil
+  end
+
+  local region = vim.fn.getregion(vim.fn.getpos("v"), vim.fn.getpos("."), { type = "v" })
+  if #region ~= 1 then
+    return nil
+  end
+
+  local reference = vim.trim(region[1])
+  reference = reference:gsub("^[%[%]%(%)%{%}<>`'\"|]+", "")
+  reference = trim_codex_reference_suffix(reference)
   return reference ~= "" and reference or nil
 end
 
@@ -1533,8 +1620,8 @@ local function resolve_codex_path(session, path)
   return path
 end
 
-local function open_codex_reference(session)
-  local reference = codex_reference_at_cursor()
+local function open_codex_reference(session, reference)
+  reference = reference or codex_reference_at_cursor()
   if not reference then
     vim.notify("光标下没有可打开的 Codex 路径", vim.log.levels.WARN)
     return
@@ -1582,6 +1669,15 @@ local function configure_codex_buffer(session)
   vim.keymap.set("n", "gx", function()
     open_codex_reference(session)
   end, { buffer = session.buf, desc = "Open Codex path in editor window" })
+  vim.keymap.set("x", "gx", function()
+    local reference = codex_reference_from_selection()
+    vim.cmd("normal! \27")
+    if not reference then
+      vim.notify("请选择同一行内的 Codex 路径", vim.log.levels.WARN)
+      return
+    end
+    open_codex_reference(session, reference)
+  end, { buffer = session.buf, desc = "Open selected Codex path in editor window" })
 end
 
 local function restore_terminal_drawer_window_options(win, options)
