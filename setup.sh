@@ -379,6 +379,7 @@ for skill_dir in "$DOTFILES"/claude-skills/*; do
     skill_name="$(basename "$skill_dir")"
     link_file "$skill_dir" "$HOME/.claude/skills/$skill_name"
 done
+# 自动发现并链接全部 Codex skills；新增目录无需再单独写 ln -s
 for skill_dir in "$DOTFILES"/codex-skills/*; do
     [ -d "$skill_dir" ] || continue
     skill_name="$(basename "$skill_dir")"
