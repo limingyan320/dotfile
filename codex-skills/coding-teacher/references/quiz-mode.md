@@ -4,7 +4,7 @@
 
 Choose one narrow target from, in order:
 
-1. the code or concept named by the user;
+1. the code, tool, command, workflow, or concept named by the user;
 2. the active topic in `TEACHER.md`;
 3. a recently explained item marked `new`, `learning`, or `shaky`;
 4. a previously recalled item that has not been tested recently.
@@ -36,6 +36,8 @@ Reply in no more than about 160 Chinese characters:
 
 When code execution is needed to verify an answer, use an isolated scratch file or a non-mutating command. Do not run device, production, deployment, or destructive operations as quiz validation.
 
+For an `incorrect` or `partial` answer, capture the mistaken claim before correcting it. Match it against existing misconception entries by meaning, not merely wording. Create a new entry when it is new; otherwise increment its repeat count and append today's date to its repeat history. Do not claim the user believed something they did not state.
+
 ## Give Progressive Hints
 
 Advance one level only when the user asks for help or is visibly stuck:
@@ -57,4 +59,4 @@ After resolving the question, update the topic and recall-item status:
 - `shaky`: partly correct or required substantial hints;
 - `recalled`: answered correctly without answer-bearing hints.
 
-Record only the outcome and hint level, not the user's full response or a full answer key.
+Record the outcome and hint level. For wrong or partial answers, also preserve a concise version of the user's actual claim and a self-contained correction under the misconception schema. Do not copy the full conversation transcript.

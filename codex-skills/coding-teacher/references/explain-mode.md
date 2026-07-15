@@ -21,6 +21,7 @@ Choose only the shape needed by the question:
 - **Meaning:** state what the construct means and what value it produces.
 - **Data flow:** show `input -> conversion -> stored value -> consumer`.
 - **Call flow:** show `entry point -> function -> dependency -> result`.
+- **Tool/command:** show `user command -> tool state/change -> observable result`.
 - **Name/API:** identify which names are fixed by a library and which are chosen by the programmer.
 - **Comparison:** state the single distinction the user is asking about.
 
@@ -30,8 +31,12 @@ Use a concrete value from the current code when it removes ambiguity. Do not rep
 
 When the question exposes an unknown prerequisite, explain only that prerequisite and stop. For example, if understanding `args.password_env` first requires understanding object attributes, explain attributes rather than continuing through the entire authentication flow.
 
-Mark exact library APIs, endpoints, CLI flags, and established project names accurately. Apply the categories in `memory-policy.md`; do not present arbitrary local variable names as language requirements.
+Mark exact library APIs, endpoints, commands, CLI flags, and established project names accurately. Apply the categories in `memory-policy.md`; do not present arbitrary local variable names as language requirements.
+
+When the user states a guess, assumption, or mental model, identify it before correcting it. If it is wrong, explain the first causal reason it fails rather than merely replacing it with the right answer. Do not invent an initial thought when the user has not expressed one.
 
 ## Record The Turn
 
-Update the topic row in `TEACHER.md` with the source location, the concept explained, and today's date. Add at most a few recall items that are central to the explanation.
+Update the topic row in `TEACHER.md` with the relevant file, command, tool, workflow, or documentation reference, the concept explained, and today's date. Add at most a few recall items that are central to the explanation.
+
+When a stated thought was wrong, create or update one misconception entry containing the user's initial thought, why it was wrong, the correct answer, and why it is correct. Keep the correction self-contained for later review.

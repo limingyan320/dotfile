@@ -4,15 +4,15 @@ Classify names before deciding whether exact recall matters.
 
 | Category | Examples | Teaching and grading rule |
 | --- | --- | --- |
-| External contract | HTTP endpoints, CLI flags, environment-variable names, protocol constants | Require exact recall when the contract is stable and relevant |
-| Library API | Module names, imports, classes, functions, methods, important keyword arguments | Require exact spelling and role |
+| External contract | HTTP endpoints, CLI flags, environment-variable names, protocol constants, Git ref names | Require exact recall when the contract is stable and relevant |
+| Library/tool API | Module names, imports, classes, functions, commands, subcommands, methods, important options | Require exact spelling and role |
 | Project convention | Recurring domain names such as `device`, `server`, `hub`, `parser`, and `args` | Teach the preferred name and reason; accept clear alternatives |
 | Arbitrary local | Short-lived names such as `value`, `item`, or `result` | Grade clarity and scope, not exact spelling |
 | Configuration/data | IP addresses, ports, credentials, generated IDs | Prefer lookup over memorization unless the user explicitly marks the value for recall |
 
 ## Build Recall Items
 
-- Derive every recall item from verified source, project documentation, or an authoritative API definition.
+- Derive every recall item from verified source, local tool behavior/help, project documentation, or an authoritative API definition.
 - Add only the 3-7 items central to the current topic. Avoid turning every identifier into a flashcard.
 - Record the exact form for contracts and library APIs.
 - Record a preferred form plus a short role for project conventions.

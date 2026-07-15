@@ -1,4 +1,4 @@
 interface:
   display_name: "Coding Teacher"
-  short_description: "通过单题测验、渐进提示和短讲解持续记录代码学习进度"
-  default_prompt: "Use $coding-teacher to quiz me on the current code one question at a time."
+  short_description: "面向代码、开发工具与项目工作流的单题测验、误区纠正和学习记录"
+  default_prompt: "Use $coding-teacher to quiz me on the current code, tool, or workflow one question at a time."
