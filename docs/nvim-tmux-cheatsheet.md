@@ -80,8 +80,13 @@ Neovim 0.12 可以把当前 TUI 脱离，但让原来的 Nvim 进程继续在后
 | 按键 | 操作 |
 |------|------|
 | `Space d` | detach 当前 UI，回到外层 shell；不退出 Nvim 进程 |
-| `Space fs` | Telescope 列出同一用户的其他 live Nvim 会话 |
-| 会话列表内 `j` / `k`、`Enter` | 选择并连接到目标会话 |
+| `Space fs` | 打开 Telescope Session Manager；即使只有当前 session 也会显示，默认进入 normal mode |
+| Session Manager 内 `j` / `k`、`gg` / `G` | 上下选择、跳到首项 / 末项 |
+| Session Manager 内 `Enter` | 连接到目标 session；选择 `CURRENT` 时关闭列表并回到当前视图 |
+| Session Manager 内 `c` | 浮窗输入名称，在当前 cwd 创建新 session、保留旧 session 并立即切换 |
+| Session Manager 内 `r` / `Ctrl+R` | 浮窗重命名选中的 session；insert mode 下也可用 `Ctrl+R` |
+| Session Manager 内 `i` / `a` | 进入 insert mode，按名称、项目、buffer、cwd 搜索 |
+| Session Manager 内 `?` | 显示 Telescope 快捷键帮助 |
 
 推荐恢复流程仍沿用原来的入口：
 
@@ -91,9 +96,9 @@ Space f s
 选择项目 / 当前 buffer 后按 Enter
 ```
 
-列表用 `DETACHED` / `ATTACHED` 标出连接状态，并显示项目、当前 buffer 和 `窗口数w 标签数t 修改数* terminal数term`，不会要求记 socket 路径。headless / embed 辅助进程不会出现；启动时若存在 detached 会话，只会轻量提示数量，不会打断 `nvim .` 的 Oil 视图。
+列表按 `CURRENT`、`DETACHED`、`ATTACHED` 排序，并显示逻辑名称（未命名时回退为项目名）、当前 buffer 和 `窗口数w 标签数t 修改数* terminal数term`，不会要求记 socket 路径。名称保存在 Nvim server 内，terminal 关闭或 detach 后仍在，`:qa` 后随 session 一起消失。headless / embed 辅助进程不会出现；启动时若存在 detached 会话，只会轻量提示数量，不会打断 `nvim .` 的 Oil 视图。
 
-从刚启动的空白 `nvim` / `nvim .` 连接时，这个入口实例会自动回收；如果当前实例已有分屏、多个 buffer、未保存修改、terminal，或它本身曾被 detach，则切换后仍留在后台，可以再通过 `Space fs` 切回来。
+从刚启动的未命名空白 `nvim` / `nvim .` 连接时，这个入口实例会自动回收；如果当前实例已命名、已有分屏、多个 buffer、未保存修改、terminal，或它本身曾被 detach，则切换后仍留在后台，可以再通过 `Space fs` 切回来。
 
 隐藏 host 使用单独的 tmux socket `dotfiles-nvim-host`，前台仍是直接的 Neovim remote UI，不会出现 tmux 状态栏、copy mode 或滚动拦截；普通 `tmux ls` 也看不到它。排查时可运行 `tmux -L dotfiles-nvim-host ls`。`:qa` / `:qa!` 会正常结束对应 Nvim session、socket；最后一个 session 退出后隐藏 tmux server 也自动结束。`nvim --headless`、`--server`、`--listen`、管道输入等工具调用会自动绕过托管；临时需要完全直启时可用 `command nvim ...`。
 

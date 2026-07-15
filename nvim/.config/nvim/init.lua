@@ -52,10 +52,17 @@ end
 -- embed/headless 辅助进程不会触发 UIEnter，会自然被过滤掉。
 local supports_nvim_sessions = vim.fn.has("nvim-0.12") == 1 and not has_startup_arg("--headless")
 
+local function normalize_nvim_session_name(name)
+  return vim.trim(tostring(name or ""):gsub("[\r\n\t]", " "):gsub("%s+", " "))
+end
+
 vim.g.dotfiles_session_instance = 0
 vim.g.dotfiles_session_last_active = os.time()
 vim.g.dotfiles_session_detached_once = 0
 vim.g.dotfiles_session_had_changes = 0
+if vim.g.dotfiles_session_name == nil then
+  vim.g.dotfiles_session_name = normalize_nvim_session_name(vim.env.DOTFILES_NVIM_SESSION_NAME)
+end
 
 local session_info_lua = [=[
 if vim.g.dotfiles_session_instance ~= 1 then
@@ -108,6 +115,7 @@ for _, win in ipairs(vim.api.nvim_list_wins()) do
 end
 
 return {
+  name = tostring(vim.g.dotfiles_session_name or ""):gsub("[\r\n\t]", " "),
   cwd = cwd,
   project = project,
   current_buffer = current_buffer,
@@ -134,6 +142,27 @@ local function fetch_nvim_session(address)
   end
 
   info.address = address
+  info.current = false
+  return info
+end
+
+local function current_nvim_session_info()
+  if vim.g.dotfiles_session_instance ~= 1 then
+    return nil
+  end
+
+  local chunk, load_err = loadstring(session_info_lua)
+  if not chunk then
+    vim.notify("读取当前 Nvim session 失败: " .. tostring(load_err), vim.log.levels.ERROR)
+    return nil
+  end
+  local request_ok, info = pcall(chunk)
+  if not request_ok or type(info) ~= "table" then
+    return nil
+  end
+
+  info.address = vim.v.servername
+  info.current = true
   return info
 end
 
@@ -208,8 +237,14 @@ local function discover_nvim_sessions()
 
   local sessions = {}
   local seen = {}
+  local current = current_nvim_session_info()
+  if current then
+    table.insert(sessions, current)
+    seen[current.address] = true
+  end
+
   for _, address in ipairs(addresses) do
-    if address ~= vim.v.servername and not seen[address] then
+    if not seen[address] then
       seen[address] = true
       local session = fetch_nvim_session(address)
       if session then
@@ -221,10 +256,17 @@ local function discover_nvim_sessions()
   end
 
   table.sort(sessions, function(a, b)
-    local a_detached = a.ui_count == 0
-    local b_detached = b.ui_count == 0
-    if a_detached ~= b_detached then
-      return a_detached
+    local function rank(session)
+      if session.current then
+        return 0
+      end
+      return session.ui_count == 0 and 1 or 2
+    end
+
+    local a_rank = rank(a)
+    local b_rank = rank(b)
+    if a_rank ~= b_rank then
+      return a_rank < b_rank
     end
     if a.last_active ~= b.last_active then
       return a.last_active > b.last_active
@@ -239,7 +281,10 @@ local function discover_nvim_sessions()
 end
 
 local function current_session_should_survive_switch()
-  if vim.g.dotfiles_session_detached_once == 1 or vim.g.dotfiles_session_had_changes == 1 then
+  if normalize_nvim_session_name(vim.g.dotfiles_session_name) ~= ""
+    or vim.g.dotfiles_session_detached_once == 1
+    or vim.g.dotfiles_session_had_changes == 1
+  then
     return true
   end
 
@@ -325,14 +370,109 @@ local function sync_nvim_session_environment(address)
   pcall(vim.fn.chanclose, chan)
 end
 
+local set_session_name_lua = [=[
+local value = ...
+local name = tostring(value or "")
+name = vim.trim(name:gsub("[\r\n\t]", " "):gsub("%s+", " "))
+vim.g.dotfiles_session_name = name
+return name
+]=]
+
+local function set_nvim_session_name(session, name)
+  name = normalize_nvim_session_name(name)
+  if session.current or session.address == vim.v.servername then
+    vim.g.dotfiles_session_name = name
+    return true
+  end
+
+  local connect_ok, chan = pcall(vim.fn.sockconnect, "pipe", session.address, { rpc = true })
+  if not connect_ok or type(chan) ~= "number" or chan <= 0 then
+    return false, "目标 session 已不可用"
+  end
+
+  local request_ok, result = pcall(vim.rpcrequest, chan, "nvim_exec_lua", set_session_name_lua, { name })
+  pcall(vim.fn.chanclose, chan)
+  if not request_ok then
+    return false, tostring(result)
+  end
+  return true
+end
+
+local function create_managed_nvim_session(name, cwd, callback)
+  name = normalize_nvim_session_name(name)
+  local shell = vim.o.shell ~= "" and vim.o.shell or vim.env.SHELL
+  if not shell or shell == "" then
+    callback(nil, "找不到可用于创建 session 的 shell")
+    return
+  end
+
+  local command = {
+    shell,
+    "-c",
+    'source "$HOME/.shared_rc" && __dotfiles_nvim_start_host',
+  }
+  local options = {
+    cwd = cwd,
+    text = true,
+    env = {
+      DOTFILES_NVIM_SESSION_NAME = name,
+      NVIM = "",
+      NVIM_LISTEN_ADDRESS = "",
+    },
+  }
+
+  local start_ok, err = pcall(vim.system, command, options, function(result)
+    vim.schedule(function()
+      local output = vim.trim(result.stdout or "")
+      local lines = vim.split(output, "\n", { plain = true, trimempty = true })
+      local address = lines[#lines]
+      local stat = address and uv.fs_stat(address) or nil
+      if result.code ~= 0 or not managed_nvim_session_id(address or "") or not stat or stat.type ~= "socket" then
+        local detail = vim.trim(result.stderr or "")
+        callback(nil, detail ~= "" and detail or "隐藏 Nvim host 未能启动")
+        return
+      end
+      callback(address)
+    end)
+  end)
+  if not start_ok then
+    callback(nil, tostring(err))
+  end
+end
+
+local function stop_managed_nvim_session(address)
+  local session_id = managed_nvim_session_id(address)
+  if not session_id or vim.fn.executable("tmux") ~= 1 then
+    return
+  end
+
+  vim.system({
+    "tmux",
+    "-L",
+    managed_nvim_tmux_server,
+    "kill-session",
+    "-t",
+    session_id,
+  }, { text = true, env = { TMUX = "" } }):wait()
+  local stat = uv.fs_stat(address)
+  if stat and stat.type == "socket" then
+    uv.fs_unlink(address)
+  end
+end
+
 local function connect_to_nvim_session(address, keep_current)
+  if address == vim.v.servername then
+    return true
+  end
   vim.g.dotfiles_session_last_active = os.time()
   sync_nvim_session_environment(address)
   local command = keep_current and "connect " or "connect! "
   local ok, err = pcall(vim.cmd, command .. vim.fn.fnameescape(address))
   if not ok then
     vim.notify("连接 Nvim 会话失败: " .. tostring(err), vim.log.levels.ERROR)
+    return false
   end
+  return true
 end
 
 local function detach_nvim_session()
@@ -1491,6 +1631,17 @@ require("lazy").setup({
     dependencies = {
       "nvim-lua/plenary.nvim",
       "nvim-telescope/telescope-file-browser.nvim",
+      {
+        "stevearc/dressing.nvim",
+        opts = {
+          input = {
+            relative = "editor",
+            title_pos = "center",
+            prefer_width = 40,
+          },
+          select = { enabled = false },
+        },
+      },
     },
     config = function()
       local telescope = require("telescope")
@@ -1525,12 +1676,8 @@ require("lazy").setup({
         })
       end
 
-      local function show_nvim_sessions()
+      local function show_nvim_sessions(default_text)
         local sessions = discover_nvim_sessions()
-        if #sessions == 0 then
-          vim.notify("没有其他可切换的 Nvim 会话", vim.log.levels.INFO)
-          return
-        end
 
         -- 在 Telescope 打开浮窗前判断当前实例是否有值得保留的工作状态。
         -- 新启动的 nvim / nvim . 只是入口，连接后可直接回收；已有布局、
@@ -1548,11 +1695,24 @@ require("lazy").setup({
 
         pickers.new({}, {
           prompt_title = "Nvim Sessions",
+          initial_mode = "normal",
+          default_text = default_text,
           finder = finders.new_table({
             results = sessions,
             entry_maker = function(session)
-              local detached = session.ui_count == 0
-              local status = detached and "DETACHED" or "ATTACHED"
+              local status
+              local status_highlight
+              if session.current then
+                status = "CURRENT"
+                status_highlight = "TelescopeSelectionCaret"
+              elseif session.ui_count == 0 then
+                status = "DETACHED"
+                status_highlight = "DiagnosticOk"
+              else
+                status = "ATTACHED"
+                status_highlight = "DiagnosticInfo"
+              end
+              local display_name = session.name ~= "" and session.name or session.project
               local details = ("%dw %dt %d* %dterm"):format(
                 session.window_count,
                 session.tab_count,
@@ -1564,6 +1724,7 @@ require("lazy").setup({
                 value = session,
                 ordinal = table.concat({
                   status,
+                  session.name,
                   session.project,
                   session.current_buffer,
                   session.cwd,
@@ -1571,8 +1732,8 @@ require("lazy").setup({
                 }, " "),
                 display = function()
                   return displayer({
-                    { status, detached and "DiagnosticOk" or "DiagnosticInfo" },
-                    { session.project, "TelescopeResultsIdentifier" },
+                    { status, status_highlight },
+                    { display_name, "TelescopeResultsIdentifier" },
                     session.current_buffer,
                     { details, "Comment" },
                   })
@@ -1581,14 +1742,24 @@ require("lazy").setup({
             end,
           }),
           sorter = conf.generic_sorter({}),
+          sorting_strategy = "ascending",
           previewer = false,
           attach_mappings = function(prompt_bufnr, map)
+            local function reopen_sessions(default_text)
+              vim.schedule(function()
+                show_nvim_sessions(default_text)
+              end)
+            end
+
             local function select_session()
               local entry = action_state.get_selected_entry()
               if not entry then
                 return
               end
               actions.close(prompt_bufnr)
+              if entry.value.current then
+                return
+              end
               -- Telescope 的 prompt/results/border 是多组浮窗；等它完成清理后再
               -- 把 UI 交给另一个 server，避免旧会话残留 picker 浮窗。
               vim.defer_fn(function()
@@ -1596,8 +1767,68 @@ require("lazy").setup({
               end, 50)
             end
 
+            local function rename_session()
+              local entry = action_state.get_selected_entry()
+              if not entry then
+                return
+              end
+              local query = action_state.get_current_line()
+              actions.close(prompt_bufnr)
+              vim.schedule(function()
+                vim.ui.input({
+                  prompt = "Rename Nvim session:",
+                  default = entry.value.name,
+                }, function(input)
+                  if input ~= nil then
+                    local ok, err = set_nvim_session_name(entry.value, input)
+                    if not ok then
+                      vim.notify("重命名 Nvim session 失败: " .. tostring(err), vim.log.levels.ERROR)
+                    end
+                  end
+                  reopen_sessions(query)
+                end)
+              end)
+            end
+
+            local function create_session()
+              local query = action_state.get_current_line()
+              local cwd = vim.fn.getcwd()
+              actions.close(prompt_bufnr)
+              vim.schedule(function()
+                vim.ui.input({ prompt = "New Nvim session:" }, function(input)
+                  local name = normalize_nvim_session_name(input)
+                  if input == nil then
+                    reopen_sessions(query)
+                    return
+                  end
+                  if name == "" then
+                    vim.notify("Session 名称不能为空", vim.log.levels.WARN)
+                    reopen_sessions(query)
+                    return
+                  end
+
+                  create_managed_nvim_session(name, cwd, function(address, err)
+                    if not address then
+                      vim.notify("创建 Nvim session 失败: " .. tostring(err), vim.log.levels.ERROR)
+                      reopen_sessions(query)
+                      return
+                    end
+                    vim.defer_fn(function()
+                      if not connect_to_nvim_session(address, true) then
+                        stop_managed_nvim_session(address)
+                      end
+                    end, 50)
+                  end)
+                end)
+              end)
+            end
+
             actions.select_default:replace(select_session)
-            -- 这些键在普通文件 picker 中另有含义；会话列表里统一为连接或无操作。
+            map("n", "c", create_session, { desc = "Create session" })
+            map("n", "r", rename_session, { desc = "Rename session" })
+            map("n", "<C-r>", rename_session, { desc = "Rename session" })
+            map("i", "<C-r>", rename_session, { desc = "Rename session" })
+            -- 这些键在普通文件 picker 中另有含义；会话列表里不提供分屏打开。
             map("i", "<M-v>", select_session)
             map("i", "<M-s>", select_session)
             map("i", "<C-h>", function() end)

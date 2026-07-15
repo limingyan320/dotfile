@@ -24,7 +24,7 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 - `autoread` + `updatetime = 500`（缩短 `CursorHold` 触发间隔让外部改动近实时可见）
 - 外部改动侦测：`FocusGained` / `BufEnter` / `CursorHold{,I}` / `TermLeave` 主动 `checktime`；每个文件 buffer 还会跑一个 `uv.new_fs_event` watcher，被外部改动后弹 WARN `文件被外部修改，已重新加载`
 - terminal mode 使用不闪烁的黄色实心块光标；`<leader>t` 打开完整 terminal buffer；`<C-/>` / `<C-_>` 切换普通 shell 并自动进入输入，`<M-/>` 切换 `codex --yolo` agent 并保持 terminal-normal 方便继续阅读；两个通道共享底部 drawer，但各自保留 buffer / 进程，Codex 首次从当前上下文的 git 根启动
-- Neovim 0.12 live session：交互式 shell 的 `nvim` / `nvim .` / `vim` 由独立的 `dotfiles-nvim-host` tmux server 托管，terminal 意外关闭后进程仍存活；`<leader>d` 主动脱离，重新运行 `nvim` / `nvim .` 后用 `<leader>fs` 按项目 / 当前 buffer 选择并连接；前台仍是直接 remote UI，普通 `tmux ls` 不显示隐藏 host，`:qa` 会清理对应 session / socket
+- Neovim 0.12 live session：交互式 shell 的 `nvim` / `nvim .` / `vim` 由独立的 `dotfiles-nvim-host` tmux server 托管，terminal 意外关闭后进程仍存活；`<leader>d` 主动脱离；`<leader>fs` 始终打开 normal-first Session Manager，列出 `CURRENT` / `DETACHED` / `ATTACHED`，可命名、搜索、新建和连接；前台仍是直接 remote UI，普通 `tmux ls` 不显示隐藏 host，`:qa` 会清理对应 session / socket
 - netrw 禁用（`vim.g.loaded_netrw = 1`），文件浏览全走 oil
 
 ## 自定义键位（非插件）
@@ -85,7 +85,7 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 - 在 `LspAttach` 时对支持 `documentSymbolProvider` 的 LSP 自动 attach
 - `winbar` 动态显示当前位置；无 LSP symbol 时回退显示当前文件名
 
-### `nvim-telescope/telescope.nvim` (+ `telescope-file-browser.nvim`)
+### `nvim-telescope/telescope.nvim` (+ `telescope-file-browser.nvim`, `dressing.nvim`)
 
 项目根逻辑（`project_root()`）：当前 buffer 文件所在目录的 git 根 → 非 git 时用该目录 → 没文件时用 `getcwd()`。
 
@@ -99,6 +99,8 @@ picker 内自定义键位：
 | `<M-s>` | `select_horizontal`（上下分屏打开） |
 | `<C-h>` | `toggle_hidden`：重开 picker，打开 `hidden = true` + `no_ignore = true`，**保留当前输入** |
 
+Session Manager（`<leader>fs`）始终以 normal mode 打开，即使只有当前 session 也显示；按 `CURRENT` → `DETACHED` → `ATTACHED` 排序。`j` / `k` 选择，`Enter` 连接，`c` 通过 dressing 浮窗命名并创建新 session，`r` / `<C-r>` 浮窗重命名，`i` / `a` 进入 insert mode 搜索名称 / 项目 / buffer / cwd，`?` 查看帮助。命名后的空白 session 切走时也会保留。
+
 file_browser 扩展 opts：`hidden = true`, `grouped = true`（目录排前面）, `respect_gitignore = false`, `hijack_netrw = false`（交给 oil）
 
 全局键位：
@@ -108,7 +110,7 @@ file_browser 扩展 opts：`hidden = true`, `grouped = true`（目录排前面�
 | `<C-p>` | 普通文件里 `find_files({ cwd = project_root() })`；oil 目录视图里用当前 oil 目录 |
 | `<leader>fg` | `live_grep({ cwd = project_root() })` |
 | `<leader>fb` | `buffers` |
-| `<leader>fs` | live Nvim sessions；显示 detached/attached、项目、当前 buffer、窗口/标签/修改/terminal 数，`Enter` 连接 |
+| `<leader>fs` | normal-first Session Manager；显示 current/detached/attached、名称、当前 buffer、窗口/标签/修改/terminal 数，可重命名、新建、搜索和连接 |
 | `<leader>fe` | file_browser（项目根，`select_buffer`） |
 | `<leader>fE` | file_browser（`%:p:h`，当前文件目录） |
 
