@@ -41,6 +41,7 @@ cat > "$PLIST_PATH" <<PLIST
 PLIST
 
 launchctl unload "$PLIST_PATH" >/dev/null 2>&1 || true
+pkill -f "$HERE/popup.swift" >/dev/null 2>&1 || true
 launchctl load "$PLIST_PATH" >/dev/null 2>&1 || true
 
 echo "[OK] Codex 本地通知接收器已安装: $PLIST_PATH"

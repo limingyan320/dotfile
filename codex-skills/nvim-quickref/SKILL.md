@@ -23,8 +23,8 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 - `clipboard = unnamedplus`；检测到 `$SSH_TTY` / `$SSH_CONNECTION` / `$XDG_SESSION_TYPE=tty` 时自动切到 **OSC 52**（走终端剪贴板，需要 iTerm2/WezTerm/kitty 等允许剪贴板访问，tmux 需 `set-clipboard on`）
 - `autoread` + `updatetime = 500`（缩短 `CursorHold` 触发间隔让外部改动近实时可见）
 - 外部改动侦测：`FocusGained` / `BufEnter` / `CursorHold{,I}` / `TermLeave` 主动 `checktime`；每个文件 buffer 还会跑一个 `uv.new_fs_event` watcher，被外部改动后弹 WARN `文件被外部修改，已重新加载`
-- terminal mode 使用不闪烁的黄色实心块光标；`<leader>t` 打开完整 terminal buffer；`<C-/>` / `<C-_>` 切换普通 shell 并自动进入输入，`<M-/>` 切换 `codex --yolo` agent 并保持 terminal-normal 方便继续阅读；两个通道共享底部 drawer，但各自保留 buffer / 进程，Codex 首次从当前上下文的 git 根启动
-- Neovim 0.12 live session：交互式 shell 的 `nvim` / `nvim .` / `vim` 由独立的 `dotfiles-nvim-host` tmux server 托管，terminal 意外关闭后进程仍存活；`<leader>d` 主动脱离；`<leader>fs` 始终打开 normal-first Session Manager，列出 `CURRENT` / `DETACHED` / `ATTACHED`，可命名、搜索、新建、连接，并用 `dd` 确认删除非当前 session；前台仍是直接 remote UI，普通 `tmux ls` 不显示隐藏 host，`:qa` 会清理对应 session / socket
+- terminal mode 使用不闪烁的黄色实心块光标；`<leader>t` 打开完整 terminal buffer；`<C-/>` / `<C-_>` 切换普通 shell 并自动进入输入，`<M-/>` 切换 `codex --yolo` agent 并保持 terminal-normal 方便继续阅读；对应 session 的 Codex drawer 成为前台当前窗口且视口位于最新输出时会自动 check，清除完成未读标记并联动关闭对应 macOS popup；两个通道共享底部 drawer，但各自保留 buffer / 进程，Codex 首次从当前上下文的 git 根启动
+- Neovim 0.12 live session：交互式 shell 的 `nvim` / `nvim .` / `vim` 由独立的 `dotfiles-nvim-host` tmux server 托管，terminal 意外关闭后进程仍存活；`<leader>d` 主动脱离；`<leader>fs` 始终打开 normal-first Session Manager，列出 `CURRENT` / `DETACHED` / `ATTACHED`，并在最左侧用流动三点表示 Codex working、闪烁红色 `!` 表示 ready/unread；可命名、搜索、新建、连接，并用 `dd` 确认删除非当前 session；前台仍是直接 remote UI，普通 `tmux ls` 不显示隐藏 host，`:qa` 会清理对应 session / socket
 - netrw 禁用（`vim.g.loaded_netrw = 1`），文件浏览全走 oil
 
 ## 自定义键位（非插件）
@@ -38,7 +38,7 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 | n | `<leader>yp` | 复制当前 buffer 绝对路径到 `+` 和 `"` |
 | n | `<leader>t` | 在当前上下文目录开完整 terminal buffer 并直接进入输入；若当前 buffer 是 terminal，则沿用该 shell cwd |
 | n/i/t | `<C-/>` / `<C-_>` | toggle 底部普通 shell；首次打开按当前上下文目录启动，显示后自动进入输入，隐藏时保留进程 |
-| n/i/t | `<M-/>` | toggle 底部 `codex --yolo` agent；首次从 git 根启动，显示后停在 terminal-normal，按 `i` / `a` / `A` 再输入 |
+| n/i/t | `<M-/>` | toggle 底部 `codex --yolo` agent；打开后若最新输出实际可见会自动 check，单纯隐藏未查看的 drawer 不会清未读；首次从 git 根启动，显示后停在 terminal-normal，按 `i` / `a` / `A` 再输入 |
 | n/i/t | `<M-+>` / `<M-->` / `<M-0>` | 增高 / 降低 / 重置当前底部通道高度；`<M-=>` 也会增高 |
 | n | `<C-d>` / `<C-u>` | 视图下/上滚 6 行，光标尽量留在原位置；可用 `10<C-d>` / `10<C-u>` 临时指定行数 |
 | n | `<C-e>` / `<C-y>` | 原生微滚：视图下/上滚 1 行 |
@@ -101,7 +101,7 @@ picker 内自定义键位：
 | `<M-s>` | `select_horizontal`（上下分屏打开） |
 | `<C-h>` | `toggle_hidden`：重开 picker，打开 `hidden = true` + `no_ignore = true`，**保留当前输入** |
 
-Session Manager（`<leader>fs`）始终以 normal mode 打开，即使只有当前 session 也显示；按 `CURRENT` → `DETACHED` → `ATTACHED` 排序。名称列按最长名称和 picker 打开时的实际宽度动态伸缩（上限 40 显示列），buffer 占剩余空间，统计列固定在最右侧。`j` / `k` 选择，`Enter` 连接，`c` 通过 dressing 浮窗命名并创建新 session，`r` / `<C-r>` 浮窗重命名，`dd` 浮窗确认后强制删除选中的非当前 session（默认 `Cancel`，显示修改 / terminal / UI 风险；`CURRENT` 需用 `:qa` / `:qa!` 退出当前 Nvim），`i` / `a` 进入 insert mode 搜索名称 / 项目 / buffer / cwd，`?` 查看帮助。命名后的空白 session 切走时也会保留。
+Session Manager（`<leader>fs`）始终以 normal mode 打开，即使只有当前 session 也显示；按 `CURRENT` → `DETACHED` → `ATTACHED` 排序。最左侧固定 3 格 agent 列中，流动 `●··` 表示 Codex working，闪烁红色 `!` 表示 ready/unread，动画仅在 picker 打开时运行且刷新不会重置当前选择。名称列按最长名称和 picker 打开时的实际宽度动态伸缩（上限 40 显示列），buffer 占剩余空间，统计列固定在最右侧。`j` / `k` 选择，`Enter` 连接，`c` 通过 dressing 浮窗命名并创建新 session，`r` / `<C-r>` 浮窗重命名，`dd` 浮窗确认后强制删除选中的非当前 session（默认 `Cancel`，显示修改 / terminal / UI 风险；`CURRENT` 需用 `:qa` / `:qa!` 退出当前 Nvim），`i` / `a` 进入 insert mode 搜索名称 / 项目 / buffer / cwd，`?` 查看帮助。命名后的空白 session 切走时也会保留。
 
 file_browser 扩展 opts：`hidden = true`, `grouped = true`（目录排前面）, `respect_gitignore = false`, `hijack_netrw = false`（交给 oil）
 
@@ -112,7 +112,7 @@ file_browser 扩展 opts：`hidden = true`, `grouped = true`（目录排前面�
 | `<C-p>` | 普通文件里 `find_files({ cwd = project_root() })`；oil 目录视图里用当前 oil 目录 |
 | `<leader>fg` | `live_grep({ cwd = project_root() })` |
 | `<leader>fb` | `buffers` |
-| `<leader>fs` | normal-first Session Manager；显示 current/detached/attached、名称、当前 buffer、窗口/标签/修改/terminal 数，可重命名、新建、搜索、连接，并用 `dd` 确认删除非当前 session |
+| `<leader>fs` | normal-first Session Manager；显示 Codex working/ready-unread 动画、current/detached/attached、名称、当前 buffer、窗口/标签/修改/terminal 数，可重命名、新建、搜索、连接，并用 `dd` 确认删除非当前 session |
 | `<leader>fe` | file_browser（项目根，`select_buffer`） |
 | `<leader>fE` | file_browser（`%:p:h`，当前文件目录） |
 

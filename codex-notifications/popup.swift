@@ -145,15 +145,16 @@ func buildWindow(title: String, body: String, icon: NSImage?) -> NotificationWin
     return window
 }
 
-func position(window: NSWindow) {
+func position(window: NSWindow, slot: Int) {
     guard let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.main else {
         return
     }
     let visible = screen.visibleFrame
     let marginX: CGFloat = 18
     let marginY: CGFloat = 16
+    let gap: CGFloat = 10
     let x = visible.maxX - window.frame.width - marginX
-    let y = visible.maxY - window.frame.height - marginY
+    let y = visible.maxY - window.frame.height - marginY - CGFloat(slot) * (window.frame.height + gap)
     window.setFrameOrigin(NSPoint(x: x, y: y))
 }
 
@@ -165,12 +166,13 @@ guard args.count >= 3 else {
 let title = args[1]
 let body = args[2]
 let icon = loadIcon(from: args.count >= 4 ? args[3] : nil)
+let slot = args.count >= 5 ? max(0, Int(args[4]) ?? 0) : 0
 
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 
 let window = buildWindow(title: title, body: body, icon: icon)
-position(window: window)
+position(window: window, slot: slot)
 if let content = window.contentView as? ClickableView {
     content.onClick = {
         app.terminate(nil)

@@ -40,6 +40,85 @@ local terminal_cursor_fg = "#1a1b26"
 local session_statusline_bg = "#7dcfff"
 local session_statusline_fg = "#1a1b26"
 local session_statusline_max_width = 20
+local agent_working_frames = { "●··", "·●·", "··●", "···" }
+local agent_ready_frames = { " ! ", " · " }
+
+local resolved_init_path = uv.fs_realpath(vim.fn.stdpath("config") .. "/init.lua")
+  or (vim.fn.stdpath("config") .. "/init.lua")
+local dotfiles_root = vim.fn.fnamemodify(resolved_init_path, ":h:h:h:h")
+local codex_agent_state_script = dotfiles_root .. "/codex-notifications/agent_state.py"
+
+local function codex_agent_status_dir()
+  local directory = vim.env.DOTFILES_NVIM_SESSION_DIR
+  if not directory or directory == "" then
+    local state_home = vim.env.XDG_STATE_HOME
+    if state_home and state_home ~= "" then
+      directory = state_home .. "/nvim/sessions"
+    else
+      directory = vim.fn.expand("~/.local/state/nvim/sessions")
+    end
+  end
+  return vim.fs.normalize(directory .. "/agent-status")
+end
+
+local function codex_agent_state_path(address)
+  address = vim.fs.normalize(tostring(address or ""))
+  if address == "" then
+    return nil
+  end
+  return codex_agent_status_dir() .. "/" .. vim.fn.sha256(address) .. ".json"
+end
+
+local function read_codex_agent_state(address)
+  local path = codex_agent_state_path(address)
+  if not path then
+    return { state = "idle", unread = false }
+  end
+  local handle = io.open(path, "r")
+  if not handle then
+    return { state = "idle", unread = false }
+  end
+  local raw = handle:read("*a")
+  handle:close()
+  local ok, state = pcall(vim.json.decode, raw)
+  if not ok or type(state) ~= "table"
+    or state.nvim_server ~= vim.fs.normalize(tostring(address or ""))
+  then
+    return { state = "idle", unread = false }
+  end
+  if state.state ~= "working" and state.state ~= "ready" then
+    state.state = "idle"
+    state.unread = false
+  end
+  return state
+end
+
+local function run_codex_agent_state(action, address, wait)
+  address = tostring(address or vim.v.servername or "")
+  if address == "" or vim.fn.executable("python3") ~= 1
+    or vim.fn.filereadable(codex_agent_state_script) ~= 1
+  then
+    return
+  end
+  local command = { "python3", codex_agent_state_script, action, "--server", address }
+  if wait then
+    vim.fn.system(command)
+  else
+    vim.system(command, { text = true }, function() end)
+  end
+end
+
+local function acknowledge_codex_agent(address)
+  run_codex_agent_state("ack", address, false)
+end
+
+local function clear_codex_agent(address, wait)
+  run_codex_agent_state("clear", address, wait)
+end
+
+function _G.dotfiles_codex_agent_state()
+  return read_codex_agent_state(vim.v.servername)
+end
 
 local function has_startup_arg(flag)
   for _, arg in ipairs(vim.v.argv or {}) do
@@ -72,6 +151,7 @@ vim.g.dotfiles_session_instance = 0
 vim.g.dotfiles_session_last_active = os.time()
 vim.g.dotfiles_session_detached_once = 0
 vim.g.dotfiles_session_had_changes = 0
+vim.g.dotfiles_ui_focused = 0
 if vim.g.dotfiles_session_name == nil then
   vim.g.dotfiles_session_name = normalize_nvim_session_name(vim.env.DOTFILES_NVIM_SESSION_NAME)
 end
@@ -138,6 +218,8 @@ return {
   ui_count = #vim.api.nvim_list_uis(),
   pid = vim.fn.getpid(),
   last_active = vim.g.dotfiles_session_last_active or 0,
+  agent_state = _G.dotfiles_codex_agent_state and _G.dotfiles_codex_agent_state()
+    or { state = "idle", unread = false },
 }
 ]=]
 
@@ -357,6 +439,8 @@ local session_environment_names = {
   "XDG_CACHE_HOME",
   "CODEX_HOME",
   "CODEX_NOTIFY_LISTEN_PORT",
+  "CODEX_NOTIFY_LISTENER_URL",
+  "CODEX_NOTIFY_FORWARD_URL",
 }
 
 local sync_session_environment_lua = [=[
@@ -581,6 +665,21 @@ if supports_nvim_sessions then
     callback = function()
       vim.g.dotfiles_session_instance = 1
       vim.g.dotfiles_session_last_active = os.time()
+      vim.g.dotfiles_ui_focused = 1
+    end,
+  })
+
+  vim.api.nvim_create_autocmd("FocusGained", {
+    group = session_activity_group,
+    callback = function()
+      vim.g.dotfiles_ui_focused = 1
+    end,
+  })
+
+  vim.api.nvim_create_autocmd("FocusLost", {
+    group = session_activity_group,
+    callback = function()
+      vim.g.dotfiles_ui_focused = 0
     end,
   })
 
@@ -616,6 +715,9 @@ if supports_nvim_sessions then
       if vim.g.dotfiles_session_instance == 1 then
         vim.g.dotfiles_session_detached_once = 1
         vim.g.dotfiles_session_last_active = os.time()
+        if #vim.api.nvim_list_uis() <= 1 then
+          vim.g.dotfiles_ui_focused = 0
+        end
       end
     end,
   })
@@ -638,6 +740,16 @@ if supports_nvim_sessions then
           vim.notify(("发现 %d 个已脱离的 Nvim 会话（Space f s）"):format(detached_count))
         end
       end, 150)
+    end,
+  })
+
+  vim.api.nvim_create_autocmd("VimLeavePre", {
+    group = session_activity_group,
+    once = true,
+    callback = function()
+      if vim.g.dotfiles_session_instance == 1 then
+        clear_codex_agent(vim.v.servername, true)
+      end
     end,
   })
 end
@@ -1291,6 +1403,61 @@ local function visible_terminal_drawer_win()
   return win
 end
 
+local function terminal_window_is_at_latest_output(win, bufnr)
+  if not win or not vim.api.nvim_win_is_valid(win)
+    or not bufnr or not vim.api.nvim_buf_is_valid(bufnr)
+  then
+    return false
+  end
+  local last_visible_line = vim.api.nvim_win_call(win, function()
+    return vim.fn.line("w$")
+  end)
+  return last_visible_line >= vim.api.nvim_buf_line_count(bufnr)
+end
+
+function _G.dotfiles_codex_is_observed()
+  if vim.g.dotfiles_ui_focused ~= 1 or #vim.api.nvim_list_uis() == 0 then
+    return false
+  end
+  local session = terminal_sessions.codex
+  if not session.buf or not vim.api.nvim_buf_is_valid(session.buf) then
+    return false
+  end
+  local win = visible_terminal_drawer_win()
+  return win ~= nil
+    and vim.api.nvim_get_current_win() == win
+    and vim.api.nvim_win_get_buf(win) == session.buf
+    and terminal_window_is_at_latest_output(win, session.buf)
+end
+
+local codex_observation_scheduled = false
+
+local function acknowledge_codex_if_observed()
+  local state = read_codex_agent_state(vim.v.servername)
+  if state.state == "ready" and state.unread
+    and _G.dotfiles_codex_is_observed()
+  then
+    acknowledge_codex_agent(vim.v.servername)
+  end
+end
+
+local function schedule_codex_observation()
+  if codex_observation_scheduled then
+    return
+  end
+  codex_observation_scheduled = true
+  vim.schedule(function()
+    codex_observation_scheduled = false
+    acknowledge_codex_if_observed()
+  end)
+end
+
+local codex_observation_group = vim.api.nvim_create_augroup("dotfiles_codex_observation", { clear = true })
+vim.api.nvim_create_autocmd({ "UIEnter", "FocusGained", "WinEnter", "BufEnter", "WinScrolled" }, {
+  group = codex_observation_group,
+  callback = schedule_codex_observation,
+})
+
 local function terminal_job_running(bufnr)
   if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
     return false
@@ -1836,6 +2003,7 @@ require("lazy").setup({
       local function show_nvim_sessions(default_text, default_selection_index)
         local sessions = discover_nvim_sessions()
 
+        local agent_width = 3
         local status_width = 8
         local details_width = 16
         local minimum_name_width = 12
@@ -1851,8 +2019,9 @@ require("lazy").setup({
         desired_name_width = math.min(desired_name_width, maximum_name_width)
 
         local function name_column_width(_, results_width)
-          local separator_width = vim.fn.strdisplaywidth(column_separator) * 3
+          local separator_width = vim.fn.strdisplaywidth(column_separator) * 4
           local available_width = results_width
+            - agent_width
             - status_width
             - details_width
             - minimum_buffer_width
@@ -1861,10 +2030,11 @@ require("lazy").setup({
         end
 
         local function buffer_column_width(_, results_width)
-          local separator_width = vim.fn.strdisplaywidth(column_separator) * 3
+          local separator_width = vim.fn.strdisplaywidth(column_separator) * 4
           return math.max(
             minimum_buffer_width,
             results_width
+              - agent_width
               - status_width
               - name_column_width(nil, results_width)
               - details_width
@@ -1876,9 +2046,25 @@ require("lazy").setup({
         -- 新启动的 nvim / nvim . 只是入口，连接后可直接回收；已有布局、
         -- terminal 或编辑历史的实例则继续留在后台，之后还能切回来。
         local keep_current = current_session_should_survive_switch()
+        local animation_frame = 1
+
+        local function agent_indicator(session)
+          local state = session.agent_state or {}
+          if state.state == "ready" and state.unread then
+            local index = math.floor((animation_frame - 1) / 2) % #agent_ready_frames + 1
+            return agent_ready_frames[index], "DiagnosticError"
+          end
+          if state.state == "working" then
+            local index = (animation_frame - 1) % #agent_working_frames + 1
+            return agent_working_frames[index], "DiagnosticInfo"
+          end
+          return "   ", "Comment"
+        end
+
         local displayer = entry_display.create({
           separator = column_separator,
           items = {
+            { width = agent_width },
             { width = status_width },
             { width = name_column_width },
             { width = buffer_column_width },
@@ -1906,6 +2092,7 @@ require("lazy").setup({
                 status_highlight = "DiagnosticInfo"
               end
               local display_name = session.name ~= "" and session.name or session.project
+              local agent_status = session.agent_state and session.agent_state.state or "idle"
               local details = ("%dw %dt %d* %dterm"):format(
                 session.window_count,
                 session.tab_count,
@@ -1917,6 +2104,7 @@ require("lazy").setup({
                 value = session,
                 ordinal = table.concat({
                   status,
+                  agent_status,
                   session.name,
                   session.project,
                   session.current_buffer,
@@ -1924,7 +2112,9 @@ require("lazy").setup({
                   session.address,
                 }, " "),
                 display = function()
+                  local agent_text, agent_highlight = agent_indicator(session)
                   return displayer({
+                    { agent_text, agent_highlight },
                     { status, status_highlight },
                     { display_name, "TelescopeResultsIdentifier" },
                     session.current_buffer,
@@ -1936,9 +2126,54 @@ require("lazy").setup({
           }),
           sorter = conf.generic_sorter({}),
           sorting_strategy = "ascending",
+          selection_strategy = "row",
           default_selection_index = default_selection_index,
           previewer = false,
           attach_mappings = function(prompt_bufnr, map)
+            local picker = action_state.get_current_picker(prompt_bufnr)
+            local animation_timer = uv.new_timer()
+            local timer_closed = false
+
+            local function close_animation_timer()
+              if timer_closed then
+                return
+              end
+              timer_closed = true
+              animation_timer:stop()
+              if not animation_timer:is_closing() then
+                animation_timer:close()
+              end
+            end
+
+            vim.api.nvim_create_autocmd("BufWipeout", {
+              buffer = prompt_bufnr,
+              once = true,
+              callback = close_animation_timer,
+            })
+
+            animation_timer:start(220, 220, vim.schedule_wrap(function()
+              if timer_closed or not vim.api.nvim_buf_is_valid(prompt_bufnr) then
+                close_animation_timer()
+                return
+              end
+              animation_frame = animation_frame + 1
+              local should_refresh = false
+              for _, session in ipairs(sessions) do
+                local previous = session.agent_state or {}
+                local current = read_codex_agent_state(session.address)
+                session.agent_state = current
+                if previous.state ~= current.state or previous.unread ~= current.unread
+                  or current.state == "working"
+                  or (current.state == "ready" and current.unread)
+                then
+                  should_refresh = true
+                end
+              end
+              if should_refresh then
+                pcall(picker.refresh, picker, nil, { reset_prompt = false })
+              end
+            end))
+
             local function reopen_sessions(query, selection_index)
               vim.schedule(function()
                 show_nvim_sessions(query, selection_index)
@@ -2063,6 +2298,7 @@ require("lazy").setup({
 
                   stop_nvim_session(entry.value, function(stopped, err)
                     if stopped then
+                      clear_codex_agent(entry.value.address, false)
                       vim.notify(("Deleted Nvim session %q"):format(display_name))
                     else
                       vim.notify("删除 Nvim session 失败: " .. tostring(err), vim.log.levels.ERROR)

@@ -16,7 +16,7 @@ shell/.bash_profile  <- Linux/WSL 的 login shell 入口，统一转发到 .bash
 nvim/.config/nvim/   <- Neovim 配置，跨平台通用，使用 lazy.nvim 管理插件
 tmux/.tmux.conf      <- tmux 配置，跨平台通用，剪贴板自动检测 (pbcopy/wl-copy/xclip/clip.exe)
 fastfetch/           <- fastfetch 配置、raw logo 和 preset；setup.sh 链到 ~/.config/fastfetch/
-codex-notifications/ <- Codex 原生 notify 配置；macOS 使用仓库内 Swift 自定义弹窗，并由 setup.sh 安装本地 listener 以接收 SSH 远端回传；其他平台走系统通知；apply.sh 合并进 ~/.codex/config.toml
+codex-notifications/ <- Codex notify + lifecycle hooks；记录每个 Nvim session 的 working/ready/seen，macOS listener 按 turn ID 管理可联动关闭的 Swift 弹窗；SSH 远端经反向转发回 Mac；apply.sh 合并 ~/.codex/config.toml / hooks.json
 claude-notifications/<- claude-notifications-go 插件的自定义资源（音效/图标/标题），apply.sh 合并进 ~/.claude/claude-notifications-go/config.json
 claude-skills/       <- Claude Code 用户级 skill（如 nvim-quickref），setup.sh 把每个子目录链到 ~/.claude/skills/
 codex-skills/        <- Codex 专用 skill（如 nvim-quickref），setup.sh 把每个子目录链到 ~/.codex/skills/
@@ -58,7 +58,7 @@ cd ~/.dotfile && git pull
 - nvim 插件通过 lazy.nvim 管理，`lazy-lock.json` 锁定版本需要一起提交
 - 新增配置工具时在 `setup.sh` 里添加对应的 `link_file` 调用
 - setup.sh 自动检测自身所在目录，不要硬编码 DOTFILES 路径
-- codex-notifications 的自定义脚本、标题映射和 macOS listener/popup 放在 `codex-notifications/`；`~/.codex/config.toml` 与 `~/Library/LaunchAgents/com.lumynous.codex-notify-listener.plist` 由脚本在本机生成，不直接进 git
+- codex-notifications 的通知脚本、agent 状态桥、标题映射和 macOS listener/popup 放在 `codex-notifications/`；`~/.codex/config.toml`、`~/.codex/hooks.json` 与 `~/Library/LaunchAgents/com.lumynous.codex-notify-listener.plist` 由脚本在本机生成，不直接进 git
 - claude-notifications 的自定义资源（音频、icon.png、titles.json）放在 `claude-notifications/`，改完跑 `bash claude-notifications/apply.sh` 即生效；`~/.claude/claude-notifications-go/config.json` 由脚本在本机生成，不进 git
 - Raycast 不由 symlink 管理全量数据库；迁移 extension hotkeys / aliases / preferences 时使用官方 `.rayconfig` Export / Import，`.rayconfig` 虽加密但仍视为私密备份，不提交 git
 - fastfetch 的 preset / logo / `ff` 选择逻辑变更后，同步更新 `docs/fastfetch-cheatsheet.md`
@@ -69,3 +69,4 @@ cd ~/.dotfile && git pull
 
 - **Neovim & Tmux 操作速查**: 当用户询问 nvim/tmux 快捷键、窗口管理、搜索跳转等操作问题时，先读取 `docs/nvim-tmux-cheatsheet.md` 再回答。该文件包含基于本 dotfile 实际配置的个性化快捷键速查表。配置变更后需同步更新此文件。
 - **Fastfetch 主题速查**: 当用户询问 `ff` / fastfetch 主题、默认分流、`~/.secrets` 覆盖时，先读取 `docs/fastfetch-cheatsheet.md` 再回答。
+- **Codex 通知与 Session 状态**: 涉及 Codex popup、Nvim session agent 状态或 SSH 通知回传时，先读取 `docs/codex-notifications.md`。

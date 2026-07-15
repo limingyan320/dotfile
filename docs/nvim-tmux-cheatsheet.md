@@ -89,6 +89,8 @@ Neovim 0.12 可以把当前 TUI 脱离，但让原来的 Nvim 进程继续在后
 | Session Manager 内 `i` / `a` | 进入 insert mode，按名称、项目、buffer、cwd 搜索 |
 | Session Manager 内 `?` | 显示 Telescope 快捷键帮助 |
 
+Session 列表最左侧有固定 3 格 Codex 状态：流动的 `●·· → ·●· → ··●` 表示 agent 正在工作；闪烁的红色 `!` 表示该 session 已完成但还没有查看。动画只在 Session Manager 打开时运行，状态会一直保留到 check；动画刷新不会把 `j` / `k` 的当前选择拉回默认项。
+
 推荐恢复流程仍沿用原来的入口：
 
 ```text
@@ -97,7 +99,7 @@ Space f s
 选择项目 / 当前 buffer 后按 Enter
 ```
 
-列表按 `CURRENT`、`DETACHED`、`ATTACHED` 排序，并显示逻辑名称（未命名时回退为项目名）、当前 buffer 和 `窗口数w 标签数t 修改数* terminal数term`，不会要求记 socket 路径。名称列会按当前列表最长名称和 picker 打开时的实际宽度动态伸缩（最多 40 显示列），宽屏优先显示完整名称，窄屏才截断；buffer 列使用剩余空间，最右侧统计保持对齐。名称保存在 Nvim server 内，terminal 关闭或 detach 后仍在，`:qa` 后随 session 一起消失。headless / embed 辅助进程不会出现；启动时若存在 detached 会话，只会轻量提示数量，不会打断 `nvim .` 的 Oil 视图。
+列表按 `CURRENT`、`DETACHED`、`ATTACHED` 排序，并显示 Codex 状态、逻辑名称（未命名时回退为项目名）、当前 buffer 和 `窗口数w 标签数t 修改数* terminal数term`，不会要求记 socket 路径。名称列会按当前列表最长名称和 picker 打开时的实际宽度动态伸缩（最多 40 显示列），宽屏优先显示完整名称，窄屏才截断；buffer 列使用剩余空间，最右侧统计保持对齐。名称保存在 Nvim server 内，terminal 关闭或 detach 后仍在，`:qa` 后随 session 一起消失。headless / embed 辅助进程不会出现；启动时若存在 detached 会话，只会轻量提示数量，不会打断 `nvim .` 的 Oil 视图。
 
 当前 session 的逻辑名称也会显示在底部状态栏最左侧，使用独立的青色背景与后面的 Vim 模式区分；未显式命名时同样回退为项目目录名，过长名称会截断。通过 Session Manager 重命名后状态栏会立即更新；不受 live session 系统管理的特殊 Nvim 实例不显示该组件。
 
@@ -175,7 +177,7 @@ browser 内（telescope 默认键）：
 | `Space yp` | 任意 buffer 里复制当前文件的**绝对路径** |
 | `Space t` | 在当前上下文目录开完整 terminal buffer 并直接进入输入；如果当前 buffer 就是 terminal，会沿用该 shell 的 cwd |
 | `Ctrl+/` | 底部普通 shell 开关；首次按当前上下文目录启动，显示后自动进入输入，隐藏时保留进程（`Ctrl+_` 也兼容） |
-| `Option + /` | 底部 Codex agent 开关；以 `codex --yolo` 从当前上下文的 Git 根启动，显示后停在 terminal-normal，隐藏时保留对话进程 |
+| `Option + /` | 底部 Codex agent 开关；打开后若 Codex 最新输出实际可见会自动 check、清除红色完成未读并关闭对应 macOS popup，单纯隐藏未查看的 drawer 不会清未读；以 `codex --yolo` 从当前上下文的 Git 根启动，显示后停在 terminal-normal，隐藏时保留对话进程 |
 | `Option + +` / `Option + -` / `Option + 0` | 增高 / 降低 / 重置当前底部通道高度 |
 
 > 普通 shell 和 Codex 各自保留独立的 terminal buffer / 进程，但共用同一个底部 drawer，所以互相切换不会堆叠窗口或丢失 shell / 对话状态。普通 shell 显示后自动进入 terminal 输入；Codex 显示后保持 terminal-normal 和原来的阅读位置，需要回复时按 `i` / `a` / `A` 进入输入。普通 shell 默认高 12 行；Codex 默认至少 12 行，并尽量占屏幕高度的 45%。normal / insert / terminal 模式下都能直接切换。若把 drawer 窗口改作普通编辑 buffer，下次 toggle 会保留该编辑窗口并另开 drawer。`Option + +` 在部分终端里会发成 `<M-=>`，已一起兼容。

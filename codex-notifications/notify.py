@@ -11,6 +11,8 @@ import urllib.request
 from html import escape
 from pathlib import Path
 
+import agent_state
+
 
 HERE = Path(__file__).resolve().parent
 TITLES_FILE = HERE / "titles.json"
@@ -79,6 +81,10 @@ def build_body(payload):
     if isinstance(ssh_target, str) and ssh_target.strip() and ssh_target != hostname:
         location_lines.append(f"SSH: {trim(ssh_target, 48)}")
 
+    nvim_session = payload.get("nvim-session")
+    if isinstance(nvim_session, str) and nvim_session.strip():
+        location_lines.append(f"Session: {trim(nvim_session, 80)}")
+
     remote_ip = payload.get("remote-ip")
     if isinstance(remote_ip, str) and remote_ip.strip():
         location_lines.append(f"IP: {trim(remote_ip, 64)}")
@@ -112,28 +118,30 @@ def find_icon():
     return None
 
 
-def forward_to_local_listener(payload):
-    if os.environ.get("CODEX_NOTIFY_SKIP_FORWARD") == "1":
-        return False
-    if not os.environ.get("SSH_CONNECTION"):
-        return False
-
+def add_location(payload):
     forwarded = dict(payload)
     hostname = socket.gethostname().strip()
     if hostname:
         forwarded["hostname"] = hostname
 
-    ssh_connection = os.environ.get("SSH_CONNECTION", "").split()
-    if len(ssh_connection) >= 4:
-        forwarded["remote-ip"] = ssh_connection[2]
+    if os.environ.get("SSH_CONNECTION"):
+        ssh_connection = os.environ.get("SSH_CONNECTION", "").split()
+        if len(ssh_connection) >= 4:
+            forwarded["remote-ip"] = ssh_connection[2]
 
-    ssh_target = os.environ.get("HOSTNAME") or os.environ.get("SSH_TTY")
-    if ssh_target:
-        forwarded["ssh-target"] = str(ssh_target)
+        ssh_target = os.environ.get("HOSTNAME") or os.environ.get("SSH_TTY")
+        if ssh_target:
+            forwarded["ssh-target"] = str(ssh_target)
+    return forwarded
+
+
+def forward_to_local_listener(payload):
+    if os.environ.get("CODEX_NOTIFY_SKIP_FORWARD") == "1":
+        return False
 
     port = os.environ.get("CODEX_NOTIFY_LISTEN_PORT", "47789")
     url = os.environ.get("CODEX_NOTIFY_FORWARD_URL", f"http://127.0.0.1:{port}/notify")
-    data = json.dumps(forwarded, ensure_ascii=False).encode("utf-8")
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(
         url,
         data=data,
@@ -147,22 +155,20 @@ def forward_to_local_listener(payload):
         return False
 
 
-def notify_macos_popup(title, body, icon_path):
+def notify_macos_popup(title, body, icon_path, slot=0):
     if not MACOS_POPUP_SCRIPT.is_file():
-        return False
+        return None
     cmd = ["swift", str(MACOS_POPUP_SCRIPT), title, body]
-    if icon_path:
-        cmd.append(str(icon_path))
+    cmd.extend([str(icon_path or ""), str(max(0, int(slot)))])
     try:
-        subprocess.Popen(
+        return subprocess.Popen(
             cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
     except OSError:
-        return False
-    return True
+        return None
 
 
 def notify_linux(title, body):
@@ -175,7 +181,7 @@ def notify_linux(title, body):
 
 def notify_macos(title, body):
     icon_path = find_icon()
-    if notify_macos_popup(title, body, icon_path):
+    if notify_macos_popup(title, body, icon_path) is not None:
         return True
 
     cmd = shutil.which("osascript")
@@ -198,6 +204,21 @@ def notify_macos(title, body):
         check=False,
     )
     return result.returncode == 0
+
+
+def notification_content(payload):
+    titles = load_titles()
+    event_type = str(payload.get("type", "codex"))
+    title = titles.get(event_type, f"Codex: {event_type}")
+    session_name = payload.get("nvim-session")
+    if isinstance(session_name, str) and session_name.strip():
+        title = f"{title} · {trim(session_name, 48)}"
+    return title, build_body(payload)
+
+
+def launch_macos_notification(payload, slot=0):
+    title, body = notification_content(payload)
+    return notify_macos_popup(title, body, find_icon(), slot=slot)
 
 
 def notify_windows(title, body):
@@ -245,15 +266,18 @@ def main():
     if not isinstance(payload, dict):
         return 0
 
-    dump_debug_payload(payload)
-
-    if forward_to_local_listener(payload):
+    payload = add_location(payload)
+    payload = agent_state.prepare_notification(payload)
+    if payload is None:
         return 0
 
-    titles = load_titles()
-    event_type = str(payload.get("type", "codex"))
-    title = titles.get(event_type, f"Codex: {event_type}")
-    body = build_body(payload)
+    dump_debug_payload(payload)
+
+    should_forward = bool(os.environ.get("SSH_CONNECTION")) or platform.system() == "Darwin"
+    if should_forward and forward_to_local_listener(payload):
+        return 0
+
+    title, body = notification_content(payload)
 
     ok = False
     system = platform.system()

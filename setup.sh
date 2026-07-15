@@ -145,7 +145,7 @@ case "$PKG_MANAGER" in
         info "正在更新软件包列表..."
         sudo apt update || warn "apt update 失败（可能是网络/代理问题），继续尝试安装已缓存的包"
         # neovim 单独处理：jammy 的 apt 仓库版本是 0.6.1，本仓库插件需要 ≥0.9
-        for pkg in tmux git xclip bash-completion ripgrep; do
+        for pkg in tmux git xclip bash-completion ripgrep python3-tomli; do
             if dpkg -s "$pkg" &>/dev/null; then
                 warn "$pkg 已安装，跳过"
             else

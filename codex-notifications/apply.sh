@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ============================================
 # codex-notifications/apply.sh
-# 把仓库内的 Codex 原生 notify 配置合并进
-# ~/.codex/config.toml
+# 把仓库内的 Codex 原生 notify / hooks 配置合并进
+# ~/.codex/config.toml 和 ~/.codex/hooks.json
 # ============================================
 #
 # 用法:
@@ -10,14 +10,16 @@
 #
 # 设计原则:
 #   - 使用 Codex 原生 notify 机制，不依赖第三方插件
-#   - 只管理 notify / tui.notifications 相关项
-#   - 其余 ~/.codex/config.toml 配置尽量保留
+#   - 只管理 notify / features.hooks / tui.notifications 和带 marker 的 hooks
+#   - 其余 ~/.codex/config.toml / hooks.json 配置尽量保留
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NOTIFY_SCRIPT="$HERE/notify.py"
+STATE_SCRIPT="$HERE/agent_state.py"
 TITLES_FILE="$HERE/titles.json"
 CONFIG_DIR="$HOME/.codex"
 CONFIG_PATH="$CONFIG_DIR/config.toml"
+HOOKS_PATH="$CONFIG_DIR/hooks.json"
 
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
@@ -48,7 +50,10 @@ find_toml_python() {
             command -v "$candidate" >/dev/null 2>&1 || continue
         fi
         if "$candidate" - <<'PY' >/dev/null 2>&1
-import tomllib
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib
 PY
         then
             printf '%s\n' "$candidate"
@@ -73,9 +78,14 @@ if [ ! -f "$NOTIFY_SCRIPT" ]; then
     exit 0
 fi
 
+if [ ! -f "$STATE_SCRIPT" ]; then
+    err "agent_state.py 不存在，跳过"
+    exit 0
+fi
+
 TOML_PYTHON="$(find_toml_python)"
 if [ -z "$TOML_PYTHON" ]; then
-    err "需要一个支持 tomllib 的 Python（>= 3.11）来更新 config.toml，跳过"
+    err "需要 Python >= 3.11，或 Python 3.10 + tomli，来更新 config.toml，跳过"
     exit 0
 fi
 
@@ -85,14 +95,18 @@ fi
 
 mkdir -p "$CONFIG_DIR"
 
-"$TOML_PYTHON" - "$CONFIG_PATH" "$NOTIFY_SCRIPT" <<'PY'
+"$TOML_PYTHON" - "$CONFIG_PATH" "$NOTIFY_SCRIPT" "$HOOKS_PATH" "$STATE_SCRIPT" <<'PY'
 import copy
 import json
 import math
 import os
 import re
+import shlex
 import sys
-import tomllib
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib
 
 GREEN = "\033[0;32m"
 YELLOW = "\033[0;33m"
@@ -112,9 +126,11 @@ def err(msg):
     print(f"{RED}[ERR]{NC}  {msg}")
 
 
-config_path, notify_script = sys.argv[1], sys.argv[2]
+config_path, notify_script, hooks_path, state_script = sys.argv[1:5]
 desired_notify = ["python3", notify_script]
 desired_events = ["agent-turn-complete", "approval-requested"]
+hook_marker = "dotfiles-codex-agent-state"
+hook_command = f"python3 {shlex.quote(state_script)} hook # {hook_marker}"
 
 
 def load_config(path):
@@ -237,33 +253,122 @@ tui["notifications"] = desired_events
 if tui_before_notifications != desired_events:
     changes.append(f"tui.notifications ← {desired_events}")
 
-if not changes:
-    skip("Codex 通知配置已是最新，无需修改")
-    sys.exit(0)
-
-try:
-    rendered = dump_toml(cfg)
-except TypeError as e:
-    err(f"当前 config.toml 含有暂不支持的复杂类型，未写回: {e}")
+features = cfg.get("features")
+if features is None:
+    features = {}
+    cfg["features"] = features
+elif not isinstance(features, dict):
+    err("config.toml 里的 features 不是 table，不做修改")
     sys.exit(2)
+if features.get("hooks") is not True:
+    features["hooks"] = True
+    changes.append("features.hooks ← true")
 
-tmp_path = config_path + ".tmp"
-try:
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        f.write(rendered)
-    os.replace(tmp_path, config_path)
-except OSError as e:
-    err(f"写回 config.toml 失败: {e}")
+if cfg != before:
     try:
-        os.remove(tmp_path)
-    except OSError:
-        pass
+        rendered = dump_toml(cfg)
+    except TypeError as e:
+        err(f"当前 config.toml 含有暂不支持的复杂类型，未写回: {e}")
+        sys.exit(2)
+
+    tmp_path = config_path + ".tmp"
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            f.write(rendered)
+        os.replace(tmp_path, config_path)
+    except OSError as e:
+        err(f"写回 config.toml 失败: {e}")
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+        sys.exit(2)
+
+
+def load_hooks(path):
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            value = json.load(handle)
+    except (OSError, json.JSONDecodeError) as e:
+        err(f"hooks.json 无法读取或不是合法 JSON: {e}")
+        sys.exit(2)
+    if not isinstance(value, dict):
+        err("hooks.json 根节点不是 object，不做修改")
+        sys.exit(2)
+    return value
+
+
+hooks_document = load_hooks(hooks_path)
+hooks_before = copy.deepcopy(hooks_document)
+hooks = hooks_document.get("hooks")
+if hooks is None:
+    hooks = {}
+    hooks_document["hooks"] = hooks
+elif not isinstance(hooks, dict):
+    err("hooks.json 里的 hooks 不是 object，不做修改")
     sys.exit(2)
 
-print("")
-ok(f"已应用 {len(changes)} 项变更:")
-for item in changes:
-    print(f"     - {item}")
+for event in ("UserPromptSubmit", "Stop"):
+    groups = hooks.get(event)
+    if groups is None:
+        groups = []
+    elif not isinstance(groups, list):
+        err(f"hooks.json 里的 hooks.{event} 不是 array，不做修改")
+        sys.exit(2)
+
+    preserved_groups = []
+    for group in groups:
+        if not isinstance(group, dict):
+            preserved_groups.append(group)
+            continue
+        handlers = group.get("hooks")
+        if not isinstance(handlers, list):
+            preserved_groups.append(group)
+            continue
+        preserved_handlers = []
+        for handler in handlers:
+            command = handler.get("command") if isinstance(handler, dict) else None
+            if not isinstance(command, str) or hook_marker not in command:
+                preserved_handlers.append(handler)
+        if preserved_handlers:
+            updated_group = copy.deepcopy(group)
+            updated_group["hooks"] = preserved_handlers
+            preserved_groups.append(updated_group)
+
+    preserved_groups.append({
+        "hooks": [{
+            "type": "command",
+            "command": hook_command,
+            "timeout": 5,
+        }],
+    })
+    hooks[event] = preserved_groups
+
+if hooks_document != hooks_before:
+    hooks_tmp_path = hooks_path + ".tmp"
+    try:
+        with open(hooks_tmp_path, "w", encoding="utf-8") as handle:
+            json.dump(hooks_document, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+        os.replace(hooks_tmp_path, hooks_path)
+    except OSError as e:
+        err(f"写回 hooks.json 失败: {e}")
+        try:
+            os.remove(hooks_tmp_path)
+        except OSError:
+            pass
+        sys.exit(2)
+    changes.append("Codex lifecycle hooks ← UserPromptSubmit / Stop")
+
+if not changes:
+    skip("Codex 通知与 hooks 配置已是最新，无需修改")
+else:
+    print("")
+    ok(f"已应用 {len(changes)} 项变更:")
+    for item in changes:
+        print(f"     - {item}")
 PY
 
 rc=$?
