@@ -37,6 +37,9 @@ vim.opt.guicursor = "n-v-c-sm:block,i-ci-ve:ver25,r-cr-o:hor20,t:block-TermCurso
 local view_scroll_lines = 6
 local terminal_cursor_bg = "#ffd866"
 local terminal_cursor_fg = "#1a1b26"
+local session_statusline_bg = "#7dcfff"
+local session_statusline_fg = "#1a1b26"
+local session_statusline_max_width = 20
 
 local function has_startup_arg(flag)
   for _, arg in ipairs(vim.v.argv or {}) do
@@ -54,6 +57,15 @@ local supports_nvim_sessions = vim.fn.has("nvim-0.12") == 1 and not has_startup_
 
 local function normalize_nvim_session_name(name)
   return vim.trim(tostring(name or ""):gsub("[\r\n\t]", " "):gsub("%s+", " "))
+end
+
+local function refresh_nvim_session_statusline()
+  local lualine = package.loaded.lualine
+  if lualine and lualine.refresh then
+    lualine.refresh({ place = { "statusline" }, scope = "all", force = true })
+  else
+    vim.cmd("redrawstatus")
+  end
 end
 
 vim.g.dotfiles_session_instance = 0
@@ -180,6 +192,10 @@ local function managed_nvim_session_id(address)
   end
 
   return vim.fn.fnamemodify(address, ":t"):match("^(nvim%-.+)%.sock$")
+end
+
+local function current_nvim_session_is_managed()
+  return vim.g.dotfiles_session_instance == 1 and managed_nvim_session_id(vim.v.servername) ~= nil
 end
 
 local function managed_nvim_session_addresses()
@@ -375,6 +391,12 @@ local value = ...
 local name = tostring(value or "")
 name = vim.trim(name:gsub("[\r\n\t]", " "):gsub("%s+", " "))
 vim.g.dotfiles_session_name = name
+local lualine = package.loaded.lualine
+if lualine and lualine.refresh then
+  lualine.refresh({ place = { "statusline" }, scope = "all", force = true })
+else
+  vim.cmd("redrawstatus")
+end
 return name
 ]=]
 
@@ -382,6 +404,7 @@ local function set_nvim_session_name(session, name)
   name = normalize_nvim_session_name(name)
   if session.current or session.address == vim.v.servername then
     vim.g.dotfiles_session_name = name
+    refresh_nvim_session_statusline()
     return true
   end
 
@@ -647,6 +670,46 @@ vim.treesitter.language.register("tsx", "typescriptreact")
 
 local function statusline_escape(text)
   return text:gsub("%%", "%%%%")
+end
+
+local function truncate_statusline_text(text, max_width)
+  if vim.fn.strdisplaywidth(text) <= max_width then
+    return text
+  end
+
+  local suffix = "…"
+  local available_width = max_width - vim.fn.strdisplaywidth(suffix)
+  local width = 0
+  local result = {}
+  for index = 0, vim.fn.strchars(text) - 1 do
+    local character = vim.fn.strcharpart(text, index, 1)
+    local character_width = vim.fn.strdisplaywidth(character)
+    if width + character_width > available_width then
+      break
+    end
+    table.insert(result, character)
+    width = width + character_width
+  end
+  return table.concat(result) .. suffix
+end
+
+local function nvim_session_statusline_label()
+  if not current_nvim_session_is_managed() then
+    return ""
+  end
+
+  local name = normalize_nvim_session_name(vim.g.dotfiles_session_name)
+  if name == "" then
+    local cwd = vim.fn.getcwd()
+    local home = uv.os_homedir()
+    name = cwd == home and "~" or vim.fn.fnamemodify(cwd, ":t")
+    if name == "" then
+      name = cwd
+    end
+    name = normalize_nvim_session_name(name)
+  end
+
+  return truncate_statusline_text(name, session_statusline_max_width)
 end
 
 function _G.dotfiles_winbar()
@@ -1687,6 +1750,19 @@ require("lazy").setup({
         section_separators = { left = "", right = "" },
         component_separators = { left = "", right = "" },
       },
+      sections = {
+        lualine_a = {
+          {
+            nvim_session_statusline_label,
+            cond = function()
+              return current_nvim_session_is_managed()
+            end,
+            color = { fg = session_statusline_fg, bg = session_statusline_bg, gui = "bold" },
+            separator = { right = "" },
+          },
+          "mode",
+        },
+      },
     },
   },
   -- 文件搜索（Ctrl+P 搜文件，<leader>fg 全局搜内容）
@@ -1760,17 +1836,53 @@ require("lazy").setup({
       local function show_nvim_sessions(default_text, default_selection_index)
         local sessions = discover_nvim_sessions()
 
+        local status_width = 8
+        local details_width = 16
+        local minimum_name_width = 12
+        local default_name_width = 18
+        local maximum_name_width = 40
+        local minimum_buffer_width = 20
+        local column_separator = "  "
+        local desired_name_width = default_name_width
+        for _, session in ipairs(sessions) do
+          local display_name = session.name ~= "" and session.name or session.project
+          desired_name_width = math.max(desired_name_width, vim.fn.strdisplaywidth(display_name))
+        end
+        desired_name_width = math.min(desired_name_width, maximum_name_width)
+
+        local function name_column_width(_, results_width)
+          local separator_width = vim.fn.strdisplaywidth(column_separator) * 3
+          local available_width = results_width
+            - status_width
+            - details_width
+            - minimum_buffer_width
+            - separator_width
+          return math.max(minimum_name_width, math.min(desired_name_width, available_width))
+        end
+
+        local function buffer_column_width(_, results_width)
+          local separator_width = vim.fn.strdisplaywidth(column_separator) * 3
+          return math.max(
+            minimum_buffer_width,
+            results_width
+              - status_width
+              - name_column_width(nil, results_width)
+              - details_width
+              - separator_width
+          )
+        end
+
         -- 在 Telescope 打开浮窗前判断当前实例是否有值得保留的工作状态。
         -- 新启动的 nvim / nvim . 只是入口，连接后可直接回收；已有布局、
         -- terminal 或编辑历史的实例则继续留在后台，之后还能切回来。
         local keep_current = current_session_should_survive_switch()
         local displayer = entry_display.create({
-          separator = "  ",
+          separator = column_separator,
           items = {
-            { width = 8 },
-            { width = 18 },
-            { remaining = true },
-            { width = 16 },
+            { width = status_width },
+            { width = name_column_width },
+            { width = buffer_column_width },
+            { width = details_width },
           },
         })
 

@@ -11,7 +11,7 @@
 > Swift 例外 = 跟随运行时 ftplugin 用 4 空格；普通可编辑 buffer 在 `{}` / `[]` / `()` 中间按 `Enter` 时会自动拆成三行，并让闭括号和起始缩进对齐
 > 输入 `:` 不会再触发“当前行立即自动纠偏缩进”；只保留 `Enter` 续行时的正常缩进
 > 顶部 `winbar` 会显示当前所在的文件 / 函数路径；折叠默认启用但保持全部展开
-> 底部 `lualine` 状态栏使用 Powerline 三角分隔符
+> 底部 `lualine` 状态栏使用 Powerline 三角分隔符；最左侧青色块显示当前 live session 名称，后面才是 `NORMAL` / `INSERT` / `TERMINAL` 等当前模式
 > 滚动偏 IDE/网页手感：`Ctrl+D/U` 小步滚动视图，鼠标滚轮每格 2 行，光标附近保留 6 行上下文
 > `/` 搜索默认增量定位 + 高亮全部匹配；小写模式默认忽略大小写，含大写时自动切回区分大小写
 
@@ -97,7 +97,9 @@ Space f s
 选择项目 / 当前 buffer 后按 Enter
 ```
 
-列表按 `CURRENT`、`DETACHED`、`ATTACHED` 排序，并显示逻辑名称（未命名时回退为项目名）、当前 buffer 和 `窗口数w 标签数t 修改数* terminal数term`，不会要求记 socket 路径。名称保存在 Nvim server 内，terminal 关闭或 detach 后仍在，`:qa` 后随 session 一起消失。headless / embed 辅助进程不会出现；启动时若存在 detached 会话，只会轻量提示数量，不会打断 `nvim .` 的 Oil 视图。
+列表按 `CURRENT`、`DETACHED`、`ATTACHED` 排序，并显示逻辑名称（未命名时回退为项目名）、当前 buffer 和 `窗口数w 标签数t 修改数* terminal数term`，不会要求记 socket 路径。名称列会按当前列表最长名称和 picker 打开时的实际宽度动态伸缩（最多 40 显示列），宽屏优先显示完整名称，窄屏才截断；buffer 列使用剩余空间，最右侧统计保持对齐。名称保存在 Nvim server 内，terminal 关闭或 detach 后仍在，`:qa` 后随 session 一起消失。headless / embed 辅助进程不会出现；启动时若存在 detached 会话，只会轻量提示数量，不会打断 `nvim .` 的 Oil 视图。
+
+当前 session 的逻辑名称也会显示在底部状态栏最左侧，使用独立的青色背景与后面的 Vim 模式区分；未显式命名时同样回退为项目目录名，过长名称会截断。通过 Session Manager 重命名后状态栏会立即更新；不受 live session 系统管理的特殊 Nvim 实例不显示该组件。
 
 `dd` 会强制结束目标 session，因此未保存修改和其中的 terminal 进程都会关闭；目标仍有其他 UI 连接时也会明确提示。确认框默认选中 `Cancel`，`Esc` 也会取消。`CURRENT` 不允许从管理器删除，需明确使用 `:qa` / `:qa!` 退出当前 Nvim。
 

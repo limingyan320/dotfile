@@ -79,6 +79,8 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 ### `nvim-lualine/lualine.nvim` — 状态栏
 - `event = VeryLazy`
 - Powerline 三角分隔符：`section_separators = { left = "", right = "" }`, `component_separators = { left = "", right = "" }`
+- 最左侧用固定青色组件显示当前 live session 的逻辑名称，后面才是动态着色的 Vim mode；未命名时回退为项目目录名，最长 20 显示列，非 session 实例隐藏
+- Session Manager 重命名会主动刷新 lualine，名称立即更新
 
 ### `SmiteshP/nvim-navic` — 当前代码位置 breadcrumb
 - 作为 `nvim-lspconfig` 依赖加载
@@ -99,7 +101,7 @@ picker 内自定义键位：
 | `<M-s>` | `select_horizontal`（上下分屏打开） |
 | `<C-h>` | `toggle_hidden`：重开 picker，打开 `hidden = true` + `no_ignore = true`，**保留当前输入** |
 
-Session Manager（`<leader>fs`）始终以 normal mode 打开，即使只有当前 session 也显示；按 `CURRENT` → `DETACHED` → `ATTACHED` 排序。`j` / `k` 选择，`Enter` 连接，`c` 通过 dressing 浮窗命名并创建新 session，`r` / `<C-r>` 浮窗重命名，`dd` 浮窗确认后强制删除选中的非当前 session（默认 `Cancel`，显示修改 / terminal / UI 风险；`CURRENT` 需用 `:qa` / `:qa!`），`i` / `a` 进入 insert mode 搜索名称 / 项目 / buffer / cwd，`?` 查看帮助。命名后的空白 session 切走时也会保留。
+Session Manager（`<leader>fs`）始终以 normal mode 打开，即使只有当前 session 也显示；按 `CURRENT` → `DETACHED` → `ATTACHED` 排序。名称列按最长名称和 picker 打开时的实际宽度动态伸缩（上限 40 显示列），buffer 占剩余空间，统计列固定在最右侧。`j` / `k` 选择，`Enter` 连接，`c` 通过 dressing 浮窗命名并创建新 session，`r` / `<C-r>` 浮窗重命名，`dd` 浮窗确认后强制删除选中的非当前 session（默认 `Cancel`，显示修改 / terminal / UI 风险；`CURRENT` 需用 `:qa` / `:qa!` 退出当前 Nvim），`i` / `a` 进入 insert mode 搜索名称 / 项目 / buffer / cwd，`?` 查看帮助。命名后的空白 session 切走时也会保留。
 
 file_browser 扩展 opts：`hidden = true`, `grouped = true`（目录排前面）, `respect_gitignore = false`, `hijack_netrw = false`（交给 oil）
 
