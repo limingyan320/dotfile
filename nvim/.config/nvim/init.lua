@@ -848,6 +848,39 @@ if supports_nvim_sessions then
   })
 end
 
+local session_dashboard
+if supports_nvim_sessions then
+  session_dashboard = require("dotfiles.session_dashboard").setup({
+    session_dir = managed_nvim_session_dir,
+    discover_sessions = discover_nvim_sessions,
+    read_agent_state = read_codex_agent_state,
+    agent_working_frames = agent_working_frames,
+    agent_ready_frames = agent_ready_frames,
+    normalize_name = normalize_nvim_session_name,
+    connect_session = function(session)
+      return connect_to_nvim_session(session.address, current_session_should_survive_switch())
+    end,
+    create_session = create_managed_nvim_session,
+    connect_created_session = function(address)
+      if not connect_to_nvim_session(address, true) then
+        stop_managed_nvim_session(address)
+      end
+    end,
+    rename_session = set_nvim_session_name,
+    stop_session = stop_nvim_session,
+    clear_agent = function(address)
+      clear_codex_agent(address, false)
+    end,
+  })
+
+  vim.keymap.set("n", "<leader>fs", function()
+    session_dashboard.open()
+  end, { desc = "Nvim session dashboard" })
+  vim.keymap.set("n", "<leader>fS", function()
+    session_dashboard.open({ current_notes = true })
+  end, { desc = "Current Nvim session progress" })
+end
+
 local treesitter_languages = {
   "lua",
   "python",
@@ -2362,7 +2395,9 @@ require("lazy").setup({
           select = {
             enabled = true,
             get_config = function(opts)
-              if opts.kind == "dotfiles_nvim_session_delete" then
+              if opts.kind == "dotfiles_nvim_session_delete"
+                or opts.kind == "dotfiles_nvim_session_note_delete"
+              then
                 return {
                   backend = "builtin",
                   builtin = {
@@ -2385,10 +2420,6 @@ require("lazy").setup({
       local actions = require("telescope.actions")
       local action_state = require("telescope.actions.state")
       local builtin = require("telescope.builtin")
-      local conf = require("telescope.config").values
-      local entry_display = require("telescope.pickers.entry_display")
-      local finders = require("telescope.finders")
-      local pickers = require("telescope.pickers")
 
       -- 找当前文件所在的项目根目录（git 根，没有则用文件目录）
       local function project_root()
@@ -2411,333 +2442,6 @@ require("lazy").setup({
           no_ignore = true,
           default_text = line,
         })
-      end
-
-      local function show_nvim_sessions(default_text, default_selection_index)
-        local sessions = discover_nvim_sessions()
-
-        local agent_width = 3
-        local status_width = 8
-        local details_width = 16
-        local minimum_name_width = 12
-        local default_name_width = 18
-        local maximum_name_width = 40
-        local minimum_buffer_width = 20
-        local column_separator = "  "
-        local desired_name_width = default_name_width
-        for _, session in ipairs(sessions) do
-          local display_name = session.name ~= "" and session.name or session.project
-          desired_name_width = math.max(desired_name_width, vim.fn.strdisplaywidth(display_name))
-        end
-        desired_name_width = math.min(desired_name_width, maximum_name_width)
-
-        local function name_column_width(_, results_width)
-          local separator_width = vim.fn.strdisplaywidth(column_separator) * 4
-          local available_width = results_width
-            - agent_width
-            - status_width
-            - details_width
-            - minimum_buffer_width
-            - separator_width
-          return math.max(minimum_name_width, math.min(desired_name_width, available_width))
-        end
-
-        local function buffer_column_width(_, results_width)
-          local separator_width = vim.fn.strdisplaywidth(column_separator) * 4
-          return math.max(
-            minimum_buffer_width,
-            results_width
-              - agent_width
-              - status_width
-              - name_column_width(nil, results_width)
-              - details_width
-              - separator_width
-          )
-        end
-
-        -- 在 Telescope 打开浮窗前判断当前实例是否有值得保留的工作状态。
-        -- 新启动的 nvim / nvim . 只是入口，连接后可直接回收；已有布局、
-        -- terminal 或编辑历史的实例则继续留在后台，之后还能切回来。
-        local keep_current = current_session_should_survive_switch()
-        local animation_frame = 1
-
-        local function agent_indicator(session)
-          local state = session.agent_state or {}
-          if state.state == "ready" and state.unread then
-            local index = math.floor((animation_frame - 1) / 2) % #agent_ready_frames + 1
-            return agent_ready_frames[index], "DiagnosticError"
-          end
-          if state.state == "working" then
-            local index = (animation_frame - 1) % #agent_working_frames + 1
-            return agent_working_frames[index], "DiagnosticInfo"
-          end
-          return "   ", "Comment"
-        end
-
-        local displayer = entry_display.create({
-          separator = column_separator,
-          items = {
-            { width = agent_width },
-            { width = status_width },
-            { width = name_column_width },
-            { width = buffer_column_width },
-            { width = details_width },
-          },
-        })
-
-        pickers.new({}, {
-          prompt_title = "Nvim Sessions",
-          initial_mode = "normal",
-          default_text = default_text,
-          finder = finders.new_table({
-            results = sessions,
-            entry_maker = function(session)
-              local status
-              local status_highlight
-              if session.current then
-                status = "CURRENT"
-                status_highlight = "TelescopeSelectionCaret"
-              elseif session.ui_count == 0 then
-                status = "DETACHED"
-                status_highlight = "DiagnosticOk"
-              else
-                status = "ATTACHED"
-                status_highlight = "DiagnosticInfo"
-              end
-              local display_name = session.name ~= "" and session.name or session.project
-              local agent_status = session.agent_state and session.agent_state.state or "idle"
-              local details = ("%dw %dt %d* %dterm"):format(
-                session.window_count,
-                session.tab_count,
-                session.modified_count,
-                session.terminal_count
-              )
-
-              return {
-                value = session,
-                ordinal = table.concat({
-                  status,
-                  agent_status,
-                  session.name,
-                  session.project,
-                  session.current_buffer,
-                  session.cwd,
-                  session.address,
-                }, " "),
-                display = function()
-                  local agent_text, agent_highlight = agent_indicator(session)
-                  return displayer({
-                    { agent_text, agent_highlight },
-                    { status, status_highlight },
-                    { display_name, "TelescopeResultsIdentifier" },
-                    session.current_buffer,
-                    { details, "Comment" },
-                  })
-                end,
-              }
-            end,
-          }),
-          sorter = conf.generic_sorter({}),
-          sorting_strategy = "ascending",
-          selection_strategy = "row",
-          default_selection_index = default_selection_index,
-          previewer = false,
-          attach_mappings = function(prompt_bufnr, map)
-            local picker = action_state.get_current_picker(prompt_bufnr)
-            local animation_timer = uv.new_timer()
-            local timer_closed = false
-
-            local function close_animation_timer()
-              if timer_closed then
-                return
-              end
-              timer_closed = true
-              animation_timer:stop()
-              if not animation_timer:is_closing() then
-                animation_timer:close()
-              end
-            end
-
-            vim.api.nvim_create_autocmd("BufWipeout", {
-              buffer = prompt_bufnr,
-              once = true,
-              callback = close_animation_timer,
-            })
-
-            animation_timer:start(220, 220, vim.schedule_wrap(function()
-              if timer_closed or not vim.api.nvim_buf_is_valid(prompt_bufnr) then
-                close_animation_timer()
-                return
-              end
-              if #vim.api.nvim_list_uis() == 0 then
-                return
-              end
-              animation_frame = animation_frame + 1
-              local should_refresh = false
-              for _, session in ipairs(sessions) do
-                local previous = session.agent_state or {}
-                local current = read_codex_agent_state(session.address)
-                session.agent_state = current
-                if previous.state ~= current.state or previous.unread ~= current.unread
-                  or current.state == "working"
-                  or (current.state == "ready" and current.unread)
-                then
-                  should_refresh = true
-                end
-              end
-              if should_refresh then
-                pcall(picker.refresh, picker, nil, { reset_prompt = false })
-              end
-            end))
-
-            local function reopen_sessions(query, selection_index)
-              vim.schedule(function()
-                show_nvim_sessions(query, selection_index)
-              end)
-            end
-
-            local function select_session()
-              local entry = action_state.get_selected_entry()
-              if not entry then
-                return
-              end
-              actions.close(prompt_bufnr)
-              if entry.value.current then
-                return
-              end
-              -- Telescope 的 prompt/results/border 是多组浮窗；等它完成清理后再
-              -- 把 UI 交给另一个 server，避免旧会话残留 picker 浮窗。
-              vim.defer_fn(function()
-                connect_to_nvim_session(entry.value.address, keep_current)
-              end, 50)
-            end
-
-            local function rename_session()
-              local entry = action_state.get_selected_entry()
-              if not entry then
-                return
-              end
-              local query = action_state.get_current_line()
-              actions.close(prompt_bufnr)
-              vim.schedule(function()
-                vim.ui.input({
-                  prompt = "Rename Nvim session:",
-                  default = entry.value.name,
-                }, function(input)
-                  if input ~= nil then
-                    local ok, err = set_nvim_session_name(entry.value, input)
-                    if not ok then
-                      vim.notify("重命名 Nvim session 失败: " .. tostring(err), vim.log.levels.ERROR)
-                    end
-                  end
-                  reopen_sessions(query)
-                end)
-              end)
-            end
-
-            local function create_session()
-              local query = action_state.get_current_line()
-              local cwd = vim.fn.getcwd()
-              actions.close(prompt_bufnr)
-              vim.schedule(function()
-                vim.ui.input({ prompt = "New Nvim session:" }, function(input)
-                  local name = normalize_nvim_session_name(input)
-                  if input == nil then
-                    reopen_sessions(query)
-                    return
-                  end
-                  if name == "" then
-                    vim.notify("Session 名称不能为空", vim.log.levels.WARN)
-                    reopen_sessions(query)
-                    return
-                  end
-
-                  create_managed_nvim_session(name, cwd, function(address, err)
-                    if not address then
-                      vim.notify("创建 Nvim session 失败: " .. tostring(err), vim.log.levels.ERROR)
-                      reopen_sessions(query)
-                      return
-                    end
-                    vim.defer_fn(function()
-                      if not connect_to_nvim_session(address, true) then
-                        stop_managed_nvim_session(address)
-                      end
-                    end, 50)
-                  end)
-                end)
-              end)
-            end
-
-            local function delete_session()
-              local entry = action_state.get_selected_entry()
-              if not entry then
-                return
-              end
-              if entry.value.current then
-                vim.notify("当前 session 无法在管理器中删除，请使用 :qa 或 :qa!", vim.log.levels.WARN)
-                return
-              end
-
-              local query = action_state.get_current_line()
-              local picker = action_state.get_current_picker(prompt_bufnr)
-              local selected_index = picker:get_index(picker:get_selection_row())
-              local next_index = math.min(selected_index, math.max(picker.manager:num_results() - 1, 1))
-              local display_name = entry.value.name ~= "" and entry.value.name or entry.value.project
-              local risks = {}
-              if entry.value.modified_count > 0 then
-                local suffix = entry.value.modified_count == 1 and "buffer" or "buffers"
-                table.insert(risks, ("%d modified %s"):format(entry.value.modified_count, suffix))
-              end
-              if entry.value.terminal_count > 0 then
-                local suffix = entry.value.terminal_count == 1 and "terminal" or "terminals"
-                table.insert(risks, ("%d %s"):format(entry.value.terminal_count, suffix))
-              end
-              if entry.value.ui_count > 0 then
-                local suffix = entry.value.ui_count == 1 and "attached UI" or "attached UIs"
-                table.insert(risks, ("%d %s"):format(entry.value.ui_count, suffix))
-              end
-              local delete_label = "Delete - force close this session"
-              if #risks > 0 then
-                delete_label = "Delete - closes " .. table.concat(risks, ", ")
-              end
-
-              actions.close(prompt_bufnr)
-              vim.schedule(function()
-                vim.ui.select({ "Cancel", delete_label }, {
-                  prompt = ("Delete session %q?"):format(display_name),
-                  kind = "dotfiles_nvim_session_delete",
-                }, function(choice)
-                  if choice ~= delete_label then
-                    reopen_sessions(query, selected_index)
-                    return
-                  end
-
-                  stop_nvim_session(entry.value, function(stopped, err)
-                    if stopped then
-                      clear_codex_agent(entry.value.address, false)
-                      vim.notify(("Deleted Nvim session %q"):format(display_name))
-                    else
-                      vim.notify("删除 Nvim session 失败: " .. tostring(err), vim.log.levels.ERROR)
-                    end
-                    reopen_sessions(query, stopped and next_index or selected_index)
-                  end)
-                end)
-              end)
-            end
-
-            actions.select_default:replace(select_session)
-            map("n", "c", create_session, { desc = "Create session" })
-            map("n", "r", rename_session, { desc = "Rename session" })
-            map("n", "<C-r>", rename_session, { desc = "Rename session" })
-            map("i", "<C-r>", rename_session, { desc = "Rename session" })
-            map("n", "dd", delete_session, { desc = "Delete session" })
-            -- 这些键在普通文件 picker 中另有含义；会话列表里不提供分屏打开。
-            map("i", "<M-v>", select_session)
-            map("i", "<M-s>", select_session)
-            map("i", "<C-h>", function() end)
-            return true
-          end,
-        }):find()
       end
 
       telescope.setup({
@@ -2789,7 +2493,6 @@ require("lazy").setup({
       end, { desc = "Live grep (project root)" })
 
       vim.keymap.set("n", "<leader>fb", builtin.buffers, { desc = "Buffers" })
-      vim.keymap.set("n", "<leader>fs", show_nvim_sessions, { desc = "Nvim sessions" })
     end,
   },
   -- Git 侧边栏标记（增删改彩色竖条）

@@ -24,7 +24,7 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 - `autoread` + `updatetime = 500`（缩短 `CursorHold` 触发间隔让外部改动近实时可见）
 - 外部改动侦测：`FocusGained` / `BufEnter` / `CursorHold{,I}` / `TermLeave` 主动 `checktime`；每个文件 buffer 还会跑一个 `uv.new_fs_event` watcher，被外部改动后弹 WARN `文件被外部修改，已重新加载`
 - terminal mode 使用不闪烁的黄色实心块光标；`<leader>t` 打开完整 terminal buffer；`<C-/>` / `<C-_>` 切换普通 shell 并自动进入输入，`<M-/>` 切换 `codex --yolo` agent 并保持 terminal-normal 方便继续阅读；对应 session 的 Codex drawer 成为前台当前窗口且视口位于最新输出时会自动 check，清除完成未读标记并联动关闭对应 macOS popup；两个通道共享底部 drawer，但各自保留 buffer / 进程，Codex 首次从当前上下文的 git 根启动；Codex terminal-normal 中的 `gx` 会把光标下或 visual 选中的相对路径按该会话启动根解析，并在上一个编辑窗口打开
-- Neovim 0.12 live session：交互式 shell 的 `nvim` / `nvim .` / `vim` 由独立的 `dotfiles-nvim-host` tmux server 托管，host 需通过 RPC 探活才会接入 UI；terminal 意外关闭后进程仍存活；`<leader>d` 主动脱离；`<leader>fs` 始终打开 normal-first Session Manager，列出 `CURRENT` / `DETACHED` / `ATTACHED`，并在最左侧用流动三点表示 Codex working、闪烁红色 `!` 表示 ready/unread；跨 session 状态读取走并行外部 RPC 且总等待上限 700ms，单个无响应实例会被跳过而不会卡住当前 UI 或被自动杀掉；可命名、搜索、新建、连接，并用 `dd` 确认删除非当前 session；前台仍是直接 remote UI，普通 `tmux ls` 不显示隐藏 host，`:qa` 会清理对应 session / socket
+- Neovim 0.12 live session：交互式 shell 的 `nvim` / `nvim .` / `vim` 由独立的 `dotfiles-nvim-host` tmux server 托管，host 需通过 RPC 探活才会接入 UI；terminal 意外关闭后进程仍存活；`<leader>d` 主动脱离；`<leader>fs` 打开 Mason 风格的原生 Session Dashboard，`<leader>fS` 直接展开当前 session 的进度；Dashboard 列出 `CURRENT` / `DETACHED` / `ATTACHED`，支持连接、新建、重命名、删除、Codex 状态动画和按时间分组的人工进度日志；日志是本机 state 目录里的 Markdown，约 400ms debounce 自动保存，session 退出后保留为可切换查看的 archive；跨 session 状态读取仍走总等待上限 700ms 的并行外部 RPC，日志读取不增加 RPC；前台仍是直接 remote UI，普通 `tmux ls` 不显示隐藏 host，`:qa` 会清理对应 live session / socket但保留日志
 - netrw 禁用（`vim.g.loaded_netrw = 1`），文件浏览全走 oil
 
 ## 自定义键位（非插件）
@@ -81,12 +81,20 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 - `event = VeryLazy`
 - Powerline 三角分隔符：`section_separators = { left = "", right = "" }`, `component_separators = { left = "", right = "" }`
 - 最左侧用固定青色组件显示当前 live session 的逻辑名称，后面才是动态着色的 Vim mode；未命名时回退为项目目录名，最长 20 显示列，非 session 实例隐藏
-- Session Manager 重命名会主动刷新 lualine，名称立即更新
+- Session Dashboard 重命名会主动刷新 lualine，名称立即更新
 
 ### `SmiteshP/nvim-navic` — 当前代码位置 breadcrumb
 - 作为 `nvim-lspconfig` 依赖加载
 - 在 `LspAttach` 时对支持 `documentSymbolProvider` 的 LSP 自动 attach
 - `winbar` 动态显示当前位置；无 LSP symbol 时回退显示当前文件名
+
+### 原生 Live Session Dashboard
+
+`<leader>fs` 打开 normal-first 的 Mason 风格 Dashboard；live session 按 `CURRENT` → `DETACHED` → `ATTACHED` 排列。最左侧固定 3 格 agent 列中，流动 `●··` 表示 Codex working，闪烁红色 `!` 表示 ready/unread；`◆ 数量 · 新鲜度` 表示已有人工进度，`◇ 0` 表示无记录。跨 session RPC 仍并行且总超时 700ms，日志只从本机 `${DOTFILES_NVIM_SESSION_DIR}/notes/` 读取。
+
+`j` / `k`、`gg` / `G` 在 session 和进度记录之间移动；`Enter` 在 session 行连接、在记录行打开 Markdown 编辑器；`t` 展开时间轴；`a` 新建 timestamp 记录并进入 insert；`e` 编辑选中或最新记录；`x` 把记录移到该 session 的 `trash/`；`c` 新建 session；`r` / `<C-r>` 重命名；`dd` 确认删除非当前 live session但保留日志；`A` 切换 archive；`R` 刷新；`/` 使用 Vim 原生搜索；`?` 帮助；`q` / `Esc` 关闭。
+
+进度编辑器是真实 Markdown 文件 buffer，完整支持 Vim normal / insert；TextChanged 停止约 400ms 后自动写盘，`InsertLeave` / `BufLeave` 也强制保存，normal mode `q` 保存并返回 Dashboard，`Ctrl+S` 立即保存。每条记录的原始 epoch 在文件名中，Dashboard 按本机时区呈现 `Today` / `Yesterday` / 日期；session 退出或被删除后，日志仍可按 `A` 查看和编辑。`<leader>fS` 打开同一 Dashboard、展开当前 session 并定位最新记录。
 
 ### `nvim-telescope/telescope.nvim` (+ `telescope-file-browser.nvim`, `dressing.nvim`)
 
@@ -102,8 +110,6 @@ picker 内自定义键位：
 | `<M-s>` | `select_horizontal`（上下分屏打开） |
 | `<C-h>` | `toggle_hidden`：重开 picker，打开 `hidden = true` + `no_ignore = true`，**保留当前输入** |
 
-Session Manager（`<leader>fs`）始终以 normal mode 打开，即使只有当前 session 也显示；按 `CURRENT` → `DETACHED` → `ATTACHED` 排序。最左侧固定 3 格 agent 列中，流动 `●··` 表示 Codex working，闪烁红色 `!` 表示 ready/unread，动画仅在 picker 打开且至少有一个 UI 接入时刷新，UI 全部脱离后暂停、重连后继续，刷新不会重置当前选择。名称列按最长名称和 picker 打开时的实际宽度动态伸缩（上限 40 显示列），buffer 占剩余空间，统计列固定在最右侧。`j` / `k` 选择，`Enter` 连接，`c` 通过 dressing 浮窗命名并创建新 session，`r` / `<C-r>` 浮窗重命名，`dd` 浮窗确认后强制删除选中的非当前 session（默认 `Cancel`，显示修改 / terminal / UI 风险；`CURRENT` 需用 `:qa` / `:qa!` 退出当前 Nvim），`i` / `a` 进入 insert mode 搜索名称 / 项目 / buffer / cwd，`?` 查看帮助。命名后的空白 session 切走时也会保留。
-
 file_browser 扩展 opts：`hidden = true`, `grouped = true`（目录排前面）, `respect_gitignore = false`, `hijack_netrw = false`（交给 oil）
 
 全局键位：
@@ -113,7 +119,6 @@ file_browser 扩展 opts：`hidden = true`, `grouped = true`（目录排前面�
 | `<C-p>` | 普通文件里 `find_files({ cwd = project_root() })`；oil 目录视图里用当前 oil 目录 |
 | `<leader>fg` | `live_grep({ cwd = project_root() })` |
 | `<leader>fb` | `buffers` |
-| `<leader>fs` | normal-first Session Manager；显示 Codex working/ready-unread 动画、current/detached/attached、名称、当前 buffer、窗口/标签/修改/terminal 数，可重命名、新建、搜索、连接，并用 `dd` 确认删除非当前 session |
 | `<leader>fe` | file_browser（项目根，`select_buffer`） |
 | `<leader>fE` | file_browser（`%:p:h`，当前文件目录） |
 

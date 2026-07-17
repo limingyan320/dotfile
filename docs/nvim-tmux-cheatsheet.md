@@ -80,30 +80,40 @@ Neovim 0.12 可以把当前 TUI 脱离，但让原来的 Nvim 进程继续在后
 | 按键 | 操作 |
 |------|------|
 | `Space d` | detach 当前 UI，回到外层 shell；不退出 Nvim 进程 |
-| `Space fs` | 打开 Telescope Session Manager；即使只有当前 session 也会显示，默认进入 normal mode |
-| Session Manager 内 `j` / `k`、`gg` / `G` | 上下选择、跳到首项 / 末项 |
-| Session Manager 内 `Enter` | 连接到目标 session；选择 `CURRENT` 时关闭列表并回到当前视图 |
-| Session Manager 内 `c` | 浮窗输入名称，在当前 cwd 创建新 session、保留旧 session 并立即切换 |
-| Session Manager 内 `r` / `Ctrl+R` | 浮窗重命名选中的 session；insert mode 下也可用 `Ctrl+R` |
-| Session Manager 内 `dd` | 删除选中的非当前 session；浮窗默认停在 `Cancel`，确认前显示未保存 buffer、terminal 和已连接 UI 风险 |
-| Session Manager 内 `i` / `a` | 进入 insert mode，按名称、项目、buffer、cwd 搜索 |
-| Session Manager 内 `?` | 显示 Telescope 快捷键帮助 |
+| `Space fs` | 打开 Mason 风格的原生 Session Dashboard；即使只有当前 session 也会显示，默认 normal mode |
+| `Space fS` | 打开同一个 Dashboard，自动展开当前 session 的进度时间轴并定位到最新记录 |
+| Dashboard 内 `j` / `k`、`gg` / `G` | 在 session 与进度记录之间移动、跳到首项 / 末项 |
+| Dashboard 内 `Enter` | session 行：连接目标 session；进度行：打开 Markdown 编辑器；`CURRENT` 行：关闭面板返回当前视图 |
+| Dashboard 内 `t` | 展开 / 折叠选中 session 的进度时间轴 |
+| Dashboard 内 `a` | 给选中 session 新增带当前时间戳的进度记录，并直接进入 insert mode |
+| Dashboard 内 `e` | 编辑选中的记录；在 session 行使用时打开最新记录，无记录则新建 |
+| Dashboard 内 `x` | 删除选中的进度记录；实际移动到该 session 的 `trash/`，可手工恢复 |
+| Dashboard 内 `c` | 浮窗输入名称，在当前 cwd 创建新 session、保留旧 session 并立即切换 |
+| Dashboard 内 `r` / `Ctrl+R` | 浮窗重命名选中的 live session |
+| Dashboard 内 `dd` | 删除选中的非当前 live session；浮窗默认停在 `Cancel`，确认前显示未保存 buffer、terminal 和已连接 UI 风险；进度日志保留为归档 |
+| Dashboard 内 `A` / `R` | 切换显示归档日志 / 重新扫描 live sessions |
+| Dashboard 内 `/`、`n` / `N` | 使用 Vim 原生搜索查找当前已展开内容、跳到下 / 上一个匹配 |
+| Dashboard 内 `?` | 显示 Dashboard 快捷键帮助 |
 
-Session 列表最左侧有固定 3 格 Codex 状态：流动的 `●·· → ·●· → ··●` 表示 agent 正在工作；闪烁的红色 `!` 表示该 session 已完成但还没有查看。动画只在 Session Manager 打开且至少有一个 UI 接入时刷新；UI 全部脱离后暂停、重连后继续。状态会一直保留到 check；动画刷新不会把 `j` / `k` 的当前选择拉回默认项。
+Session 列表最左侧有固定 3 格 Codex 状态：流动的 `●·· → ·●· → ··●` 表示 agent 正在工作；闪烁的红色 `!` 表示该 session 已完成但还没有查看。动画只在 Dashboard 打开且至少有一个 UI 接入时刷新；UI 全部脱离后暂停、重连后继续。状态会一直保留到 check；动画刷新不会把 `j` / `k` 的当前选择拉回默认项。
+
+每个 session 行用高亮 `◆ 数量 · 更新时间` 标出已有进度；无记录时显示灰色 `◇ 0`。展开后按 `Today` / `Yesterday` / 日期分组，时间来自创建记录时保存的 Unix timestamp，再按本机时区换算显示。记录正文是普通 Markdown 文件，编辑窗口支持完整 Vim normal / insert 操作；修改停止约 400ms 后自动保存，离开 insert、关闭窗口或离开 buffer 时也会强制保存。normal mode 下按 `q` 保存并回到 Dashboard，`Ctrl+S` 可立即写盘。
+
+日志保存在 `${DOTFILES_NVIM_SESSION_DIR}/notes/<session-id>/`，默认即 `~/.local/state/nvim/sessions/notes/`；一条记录对应一个 Markdown 文件，session 名称和项目等元数据单独原子写入 JSON。退出或删除 live session 不会删除工作进度，之后可在 Dashboard 按 `A` 查看、编辑归档；`x` 删除的记录会移入对应 `trash/`，不会直接 unlink。
 
 推荐恢复流程仍沿用原来的入口：
 
 ```text
 nvim        或 nvim .
 Space f s
-选择项目 / 当前 buffer 后按 Enter
+选择 session 后按 Enter；或按 t 展开、a 记录进度
 ```
 
-列表按 `CURRENT`、`DETACHED`、`ATTACHED` 排序，并显示 Codex 状态、逻辑名称（未命名时回退为项目名）、当前 buffer 和 `窗口数w 标签数t 修改数* terminal数term`，不会要求记 socket 路径。名称列会按当前列表最长名称和 picker 打开时的实际宽度动态伸缩（最多 40 显示列），宽屏优先显示完整名称，窄屏才截断；buffer 列使用剩余空间，最右侧统计保持对齐。跨 session 状态读取使用并行外部 RPC，总等待上限 700ms；单个无响应实例会被跳过，不会卡住当前 UI，也不会被自动杀掉。名称保存在 Nvim server 内，terminal 关闭或 detach 后仍在，`:qa` 后随 session 一起消失。headless / embed 辅助进程不会出现；只有受隐藏 host 管理的入口会在启动时检查 detached 会话并轻量提示数量，不会打断 `nvim .` 的 Oil 视图；`command nvim` 不做这次启动扫描，可作为紧急旁路。
+live 列表按 `CURRENT`、`DETACHED`、`ATTACHED` 排序，并显示 Codex 状态、逻辑名称（未命名时回退为项目名）、进度数量/新鲜度、当前 buffer 和 `窗口数w 标签数t 修改数* terminal数term`，不会要求记 socket 路径。列宽随 Dashboard 实际宽度伸缩，窄屏会依次压缩 buffer / 统计内容。跨 session 状态读取仍使用并行外部 RPC，总等待上限 700ms；日志和时间轴只读本机 state 文件，不会增加远端 RPC。单个无响应实例会被跳过，不会卡住当前 UI，也不会被自动杀掉。名称保存在 Nvim server 内，terminal 关闭或 detach 后仍在，`:qa` 后 live 名称随 session 消失，但已有日志元数据和正文保留。headless / embed 辅助进程不会出现；只有受隐藏 host 管理的入口会在启动时检查 detached 会话并轻量提示数量，不会打断 `nvim .` 的 Oil 视图；`command nvim` 不做这次启动扫描，可作为紧急旁路。
 
-当前 session 的逻辑名称也会显示在底部状态栏最左侧，使用独立的青色背景与后面的 Vim 模式区分；未显式命名时同样回退为项目目录名，过长名称会截断。通过 Session Manager 重命名后状态栏会立即更新；不受 live session 系统管理的特殊 Nvim 实例不显示该组件。
+当前 session 的逻辑名称也会显示在底部状态栏最左侧，使用独立的青色背景与后面的 Vim 模式区分；未显式命名时同样回退为项目目录名，过长名称会截断。通过 Dashboard 重命名后状态栏会立即更新；不受 live session 系统管理的特殊 Nvim 实例不显示该组件。
 
-`dd` 会强制结束目标 session，因此未保存修改和其中的 terminal 进程都会关闭；目标仍有其他 UI 连接时也会明确提示。确认框默认选中 `Cancel`，`Esc` 也会取消。`CURRENT` 不允许从管理器删除，需明确使用 `:qa` / `:qa!` 退出当前 Nvim。
+`dd` 会强制结束目标 live session，因此未保存修改和其中的 terminal 进程都会关闭；目标仍有其他 UI 连接时也会明确提示。确认框默认选中 `Cancel`，`Esc` 也会取消。`CURRENT` 不允许从 Dashboard 删除，需明确使用 `:qa` / `:qa!` 退出当前 Nvim；无论哪种退出方式，已有进度日志都保留为 archive。
 
 从刚启动的未命名空白 `nvim` / `nvim .` 连接时，这个入口实例会自动回收；如果当前实例已命名、已有分屏、多个 buffer、未保存修改、terminal，或它本身曾被 detach，则切换后仍留在后台，可以再通过 `Space fs` 切回来。
 
@@ -209,7 +219,6 @@ browser 内（telescope 默认键）：
 | `Ctrl+P` | 搜文件名（普通文件里基于当前文件的 git 根目录；oil 目录视图里基于当前目录） |
 | `Space fg` | 全局内容搜索（同样以 git 根为范围） |
 | `Space fb` | 搜已打开 buffer |
-| `Space fs` | 搜索并连接其他 live Nvim 会话 |
 | Telescope 内 `Alt+V` / `Alt+S` | 把选中的文件左右 / 上下分屏打开 |
 | Telescope 内 `Ctrl+H` | 切换：显示隐藏文件 + 忽略 .gitignore（保留已输入内容） |
 | Telescope 内 `Ctrl+J/K` | 上下移动 |
