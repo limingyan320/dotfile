@@ -888,7 +888,7 @@ if supports_nvim_sessions then
   end, { desc = "Nvim session dashboard" })
   vim.keymap.set("n", "<leader>fS", function()
     session_dashboard.open({ current_notes = true })
-  end, { desc = "Current Nvim session progress" })
+  end, { desc = "Current Nvim session tags" })
 end
 
 local treesitter_languages = {

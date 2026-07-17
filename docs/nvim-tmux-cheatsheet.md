@@ -80,33 +80,35 @@ Neovim 0.12 可以把当前 TUI 脱离，但让原来的 Nvim 进程继续在后
 | 按键 | 操作 |
 |------|------|
 | `Space d` | detach 当前 UI，回到外层 shell；不退出 Nvim 进程 |
-| `Space fs` | 打开 Mason 风格的原生 Session Dashboard；即使只有当前 session 也会显示，默认 normal mode |
-| `Space fS` | 打开同一个 Dashboard，自动展开当前 session 的进度时间轴并定位到最新记录 |
-| Dashboard 内 `j` / `k`、`gg` / `G` | 在 session 与进度记录之间移动、跳到首项 / 末项 |
-| Dashboard 内 `Enter` | session 行：连接目标 session；进度行：打开 Markdown 编辑器；`CURRENT` 行：关闭面板返回当前视图 |
-| Dashboard 内 `t` | 展开 / 折叠选中 session 的进度时间轴 |
-| Dashboard 内 `a` | 给选中 session 新增带当前时间戳的进度记录，并直接进入 insert mode |
-| Dashboard 内 `e` | 编辑选中的记录；在 session 行使用时打开最新记录，无记录则新建 |
-| Dashboard 内 `x` | 删除选中的进度记录；实际移动到该 session 的 `trash/`，可手工恢复 |
-| Dashboard 内 `c` | 浮窗输入名称，在当前 cwd 创建新 session、保留旧 session 并立即切换 |
-| Dashboard 内 `r` / `Ctrl+R` | 浮窗重命名选中的 live session |
-| Dashboard 内 `dd` | 删除选中的 live session；浮窗默认停在 `Cancel`，确认前显示未保存 buffer、terminal 和已连接 UI 风险；删除 `CURRENT` 后当前 UI 返回 shell，进度日志保留为归档 |
-| Dashboard 内 `A` / `R` | 切换显示归档日志 / 重新扫描 live sessions |
+| `Space fs` | 打开 Mason 风格的原生 Session Dashboard；进入 `Nvim Sessions` 模式并聚焦当前 session，有 tag 时自动 cascade 展开 |
+| `Space fS` | 打开同一个 Dashboard，直接进入当前 session 的 `Session Tags` 模式并定位最新 tag |
+| Session 模式 `j` / `k`、`gg` / `G` | 只在 session 之间移动；新焦点有 tag 时自动展开，旧焦点同时收起 |
+| Session 模式 `Enter` | 连接目标 session；`CURRENT` 行关闭面板返回当前视图；archive 行进入其 Tag 模式 |
+| Session 模式 `t` | 进入聚焦 session 的 Tag 操作模式；浮窗标题会变为 `Session Tags · session 名` |
+| Session 模式 `c`、`r` / `Ctrl+R` | 新建 session / 重命名聚焦的 live session |
+| Session 模式 `dd` | 删除聚焦的 live session；浮窗默认停在 `Cancel`，删除 `CURRENT` 后当前 UI 返回 shell，进度日志保留为归档 |
+| Session 模式 `A` / 任意模式 `R` | 切换显示归档日志 / 重新扫描 live sessions 与 tag |
+| Tag 模式 `j` / `k`、`gg` / `G` | 只在当前 cascade 的 tag 之间移动，日期标题会跳过 |
+| Tag 模式 `Enter` / `e` | 用独立 Markdown buffer 打开选中 tag，停在 normal mode |
+| Tag 模式 `i` | 打开选中 tag 并直接进入 insert mode |
+| Tag 模式 `a` | 新增带当前时间戳的 tag 并直接进入 insert mode |
+| Tag 模式 `dd` / `x` | 删除选中 tag；实际移动到该 session 的 `trash/`，不会删除 session |
+| Tag 模式 `t` / `q` / `Esc` | 返回 Session 模式并把光标放回所属 session；Session 模式的 `q` / `Esc` 才关闭 Dashboard |
 | Dashboard 内 `/`、`n` / `N` | 使用 Vim 原生搜索查找当前已展开内容、跳到下 / 上一个匹配 |
 | Dashboard 内 `?` | 显示 Dashboard 快捷键帮助 |
 
 Session 列表最左侧有固定 3 格 Codex 状态：流动的 `●·· → ·●· → ··●` 表示 agent 正在工作；闪烁的红色 `!` 表示该 session 已完成但还没有查看。动画只在 Dashboard 打开且至少有一个 UI 接入时刷新；UI 全部脱离后暂停、重连后继续。状态会一直保留到 check；动画刷新不会把 `j` / `k` 的当前选择拉回默认项。
 
-每个 session 行用高亮 `◆ 数量 · 更新时间` 标出已有进度；无记录时显示灰色 `◇ 0`。展开后按 `Today` / `Yesterday` / 日期分组，时间来自创建记录时保存的 Unix timestamp，再按本机时区换算显示。记录正文是普通 Markdown 文件，编辑窗口支持完整 Vim normal / insert 操作；修改停止约 400ms 后自动保存，离开 insert、关闭窗口或离开 buffer 时也会强制保存。normal mode 下按 `q` 保存并回到 Dashboard，`Ctrl+S` 可立即写盘。
+每个 session 行用高亮 `◆ 数量 · 更新时间` 标出已有 tag；无记录时显示灰色 `◇ 0`。Session 模式始终只 cascade 展开当前焦点：`j` / `k`、鼠标定位或原生搜索跳到另一个 session 行时，旧 cascade 收起、新 cascade 自动展开。展开内容按 `Today` / `Yesterday` / 日期分组，时间来自创建 tag 时保存的 Unix timestamp，再按本机时区换算显示。Tag 模式只是 Dashboard 的操作子模式，两层都仍是 Vim normal mode；记录正文才是普通 Markdown buffer，支持完整 Vim normal / insert 操作。修改停止约 400ms 后自动保存，离开 insert、关闭窗口或离开 buffer 时也会强制保存；编辑器 normal mode 下按 `q` 保存并回到 Tag 模式，`Ctrl+S` 可立即写盘。
 
-日志保存在 `${DOTFILES_NVIM_SESSION_DIR}/notes/<session-id>/`，默认即 `~/.local/state/nvim/sessions/notes/`；一条记录对应一个 Markdown 文件，session 名称和项目等元数据单独原子写入 JSON。退出或删除 live session 不会删除工作进度，之后可在 Dashboard 按 `A` 查看、编辑归档；`x` 删除的记录会移入对应 `trash/`，不会直接 unlink。
+日志保存在 `${DOTFILES_NVIM_SESSION_DIR}/notes/<session-id>/`，默认即 `~/.local/state/nvim/sessions/notes/`；一个 tag 对应一个 Markdown 文件，session 名称和项目等元数据单独原子写入 JSON。退出或删除 live session 不会删除工作进度，之后可在 Dashboard 的 Session 模式按 `A` 查看、再按 `t` 进入归档 Tag 模式；`dd` / `x` 删除的 tag 会移入对应 `trash/`，不会直接 unlink。
 
 推荐恢复流程仍沿用原来的入口：
 
 ```text
 nvim        或 nvim .
 Space f s
-选择 session 后按 Enter；或按 t 展开、a 记录进度
+用 j/k 选择 session；按 Enter 连接，或按 t 进入 Tag 模式后用 a 记录进度
 ```
 
 live 列表按 `CURRENT`、`DETACHED`、`ATTACHED` 排序，并显示 Codex 状态、逻辑名称（未命名时回退为项目名）、进度数量/新鲜度、当前 buffer 和 `窗口数w 标签数t 修改数* terminal数term`，不会要求记 socket 路径。列宽随 Dashboard 实际宽度伸缩，窄屏会依次压缩 buffer / 统计内容。跨 session 状态读取仍使用并行外部 RPC，总等待上限 700ms；日志和时间轴只读本机 state 文件，不会增加远端 RPC。单个无响应实例会被跳过，不会卡住当前 UI，也不会被自动杀掉。名称保存在 Nvim server 内，terminal 关闭或 detach 后仍在，`:qa` 后 live 名称随 session 消失，但已有日志元数据和正文保留。headless / embed 辅助进程不会出现；只有受隐藏 host 管理的入口会在启动时检查 detached 会话并轻量提示数量，不会打断 `nvim .` 的 Oil 视图；`command nvim` 不做这次启动扫描，可作为紧急旁路。

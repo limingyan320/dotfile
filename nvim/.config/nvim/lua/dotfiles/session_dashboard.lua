@@ -424,6 +424,35 @@ local function load_sessions(state)
     vim.list_extend(sessions, store:list_archives(live_ids))
   end
   state.sessions = sessions
+
+  local focused_exists = false
+  for _, session in ipairs(sessions) do
+    if session.session_id == state.focused_session_id then
+      focused_exists = true
+      break
+    end
+  end
+  if not focused_exists then
+    state.focused_session_id = nil
+    for _, session in ipairs(sessions) do
+      if session.current then
+        state.focused_session_id = session.session_id
+        break
+      end
+    end
+    if not state.focused_session_id and sessions[1] then
+      state.focused_session_id = sessions[1].session_id
+    end
+  end
+end
+
+local function session_by_id(state, session_id)
+  for _, session in ipairs(state.sessions or {}) do
+    if session.session_id == session_id then
+      return session
+    end
+  end
+  return nil
 end
 
 local function append_render_line(output, spans, item)
@@ -561,7 +590,8 @@ local function render_dashboard(state, preferred_key)
     end
     append_render_line(output, spans, item)
 
-    if state.expanded[session_id] then
+    local show_entries = session_id == state.focused_session_id and (#(session.notes or {}) > 0 or state.mode == "tags")
+    if show_entries then
       local entries = session.notes or {}
       if #entries == 0 then
         append_render_line(output, {
@@ -632,6 +662,20 @@ local function render_dashboard(state, preferred_key)
   vim.bo[state.bufnr].modifiable = false
   state.line_map = output.line_map
 
+  local title = " Nvim Sessions "
+  if state.mode == "tags" then
+    local focused = session_by_id(state, state.focused_session_id)
+    if focused then
+      title = (" Session Tags · %s "):format(display_name(focused))
+    else
+      title = " Session Tags "
+    end
+  end
+  pcall(vim.api.nvim_win_set_config, state.winid, {
+    title = truncate_display(title, math.max(1, width - 4)),
+    title_pos = "center",
+  })
+
   local target_line
   if preferred_key then
     for line, item in pairs(state.line_map) do
@@ -689,8 +733,18 @@ local function move_selection(state, direction, boundary)
   end
   for line = start_line, end_line, step do
     local item = state.line_map[line]
-    if item and (item.kind == "session" or item.kind == "entry") then
-      vim.api.nvim_win_set_cursor(state.winid, { line, 0 })
+    local selectable = item
+      and (
+        (state.mode == "sessions" and item.kind == "session")
+        or (state.mode == "tags" and item.kind == "entry" and item.session_id == state.focused_session_id)
+      )
+    if selectable then
+      if state.mode == "sessions" then
+        state.focused_session_id = item.session_id
+        render_dashboard(state, item.key)
+      else
+        vim.api.nvim_win_set_cursor(state.winid, { line, 0 })
+      end
       return
     end
   end
@@ -899,7 +953,8 @@ end
 
 local function context_session(state)
   local item = selected_item(state)
-  return item and item.session or nil, item
+  local session = item and item.session or session_by_id(state, state.focused_session_id)
+  return session, item
 end
 
 local function add_entry(state)
@@ -912,25 +967,25 @@ local function add_entry(state)
     vim.notify("创建 session 进度失败: " .. tostring(err), vim.log.levels.ERROR)
     return
   end
-  state.expanded[session.session_id] = true
+  state.mode = "tags"
+  state.focused_session_id = session.session_id
   refresh_note_data(state, session.session_id)
   render_dashboard(state, "entry:" .. entry.id)
   open_note_editor(state, session, entry, true)
 end
 
-local function edit_entry(state)
+local function edit_entry(state, enter_insert)
   local session, item = context_session(state)
   if not session then
     return
   end
-  if item.kind == "entry" then
-    open_note_editor(state, session, item.entry, false)
+  if item and item.kind == "entry" then
+    open_note_editor(state, session, item.entry, enter_insert)
   elseif session.notes and session.notes[1] then
-    state.expanded[session.session_id] = true
     render_dashboard(state, "entry:" .. session.notes[1].id)
-    open_note_editor(state, session, session.notes[1], false)
+    open_note_editor(state, session, session.notes[1], enter_insert)
   else
-    add_entry(state)
+    vim.notify("当前 session 还没有 tag；按 a 新建", vim.log.levels.INFO)
   end
 end
 
@@ -958,18 +1013,46 @@ local function delete_entry(state)
       return
     end
     store:update_session(item.session)
+    local deleted_index = 1
+    for index, candidate in ipairs(item.session.notes or {}) do
+      if candidate.id == entry.id then
+        deleted_index = index
+        break
+      end
+    end
     refresh_note_data(state, item.session_id)
-    render_dashboard(state, "session:" .. item.session_id)
+    local remaining = item.session.notes or {}
+    local next_entry = remaining[deleted_index] or remaining[deleted_index - 1]
+    local key = next_entry and "entry:" .. next_entry.id or "session:" .. item.session_id
+    render_dashboard(state, key)
   end)
 end
 
-local function toggle_session(state)
+local function enter_tag_mode(state)
   local session = context_session(state)
   if not session then
     return
   end
-  state.expanded[session.session_id] = not state.expanded[session.session_id]
-  render_dashboard(state, "session:" .. session.session_id)
+  state.mode = "tags"
+  state.focused_session_id = session.session_id
+  local item = selected_item(state)
+  local key = item and item.kind == "entry" and item.key
+    or (session.notes and session.notes[1] and "entry:" .. session.notes[1].id)
+    or "session:" .. session.session_id
+  render_dashboard(state, key)
+end
+
+local function leave_tag_mode(state)
+  state.mode = "sessions"
+  render_dashboard(state, "session:" .. tostring(state.focused_session_id or ""))
+end
+
+local function toggle_tag_mode(state)
+  if state.mode == "tags" then
+    leave_tag_mode(state)
+  else
+    enter_tag_mode(state)
+  end
 end
 
 local function select_context(state)
@@ -977,10 +1060,10 @@ local function select_context(state)
   if not session then
     return
   end
-  if item.kind == "entry" then
-    open_note_editor(state, session, item.entry, false)
+  if state.mode == "tags" then
+    edit_entry(state, false)
   elseif session.archived then
-    toggle_session(state)
+    enter_tag_mode(state)
   elseif session.current then
     close_dashboard(state)
   else
@@ -1106,16 +1189,32 @@ local function delete_session(state)
   end)
 end
 
-local function show_help()
-  vim.notify(
-    table.concat({
-      "Enter connect/edit · t expand · a add · e edit · x trash note",
-      "c create · r rename · dd delete session · A archives · R refresh",
-      "j/k move · / search · q/Esc close",
-    }, "\n"),
-    vim.log.levels.INFO,
-    { title = "Nvim Sessions" }
-  )
+local function show_help(state)
+  local lines
+  local title
+  if state.mode == "tags" then
+    lines = {
+      "Enter/e edit · i edit in Insert · a add · dd/x trash tag",
+      "j/k move tags · / search · t/q/Esc return to sessions · R refresh",
+    }
+    title = "Session Tags"
+  else
+    lines = {
+      "Enter connect · t manage tags · dd delete session",
+      "c create · r rename · A archives · R refresh",
+      "j/k move sessions · / search · q/Esc close",
+    }
+    title = "Nvim Sessions"
+  end
+  vim.notify(table.concat(lines, "\n"), vim.log.levels.INFO, { title = title })
+end
+
+local function require_tag_mode(state)
+  if state.mode == "tags" then
+    return true
+  end
+  vim.notify("按 t 进入 Tag 模式后再操作 tag", vim.log.levels.INFO)
+  return false
 end
 
 local function set_dashboard_keymaps(state)
@@ -1123,10 +1222,18 @@ local function set_dashboard_keymaps(state)
     vim.keymap.set("n", keys, callback, { buffer = state.bufnr, nowait = true, desc = description })
   end
   map("q", function()
-    close_dashboard(state)
+    if state.mode == "tags" then
+      leave_tag_mode(state)
+    else
+      close_dashboard(state)
+    end
   end, "Close session dashboard")
   map("<Esc>", function()
-    close_dashboard(state)
+    if state.mode == "tags" then
+      leave_tag_mode(state)
+    else
+      close_dashboard(state)
+    end
   end, "Close session dashboard")
   map("j", function()
     move_selection(state, 1)
@@ -1150,39 +1257,99 @@ local function set_dashboard_keymaps(state)
     select_context(state)
   end, "Connect session or edit progress")
   map("t", function()
-    toggle_session(state)
-  end, "Toggle session progress")
+    toggle_tag_mode(state)
+  end, "Toggle session tag mode")
   map("a", function()
-    add_entry(state)
+    if require_tag_mode(state) then
+      add_entry(state)
+    end
   end, "Add session progress")
   map("e", function()
-    edit_entry(state)
+    if require_tag_mode(state) then
+      edit_entry(state, false)
+    end
   end, "Edit session progress")
+  map("i", function()
+    if require_tag_mode(state) then
+      edit_entry(state, true)
+    end
+  end, "Edit session progress in Insert mode")
   map("x", function()
-    delete_entry(state)
+    if require_tag_mode(state) then
+      delete_entry(state)
+    end
   end, "Trash session progress")
   map("c", function()
-    create_session(state)
+    if state.mode == "sessions" then
+      create_session(state)
+    end
   end, "Create session")
   map("r", function()
-    rename_session(state)
+    if state.mode == "sessions" then
+      rename_session(state)
+    end
   end, "Rename session")
   map("<C-r>", function()
-    rename_session(state)
+    if state.mode == "sessions" then
+      rename_session(state)
+    end
   end, "Rename session")
   map("dd", function()
-    delete_session(state)
-  end, "Delete session")
+    if state.mode == "tags" then
+      delete_entry(state)
+    else
+      delete_session(state)
+    end
+  end, "Delete session or tag")
   map("A", function()
-    state.show_archives = not state.show_archives
-    load_sessions(state)
-    render_dashboard(state)
+    if state.mode == "sessions" then
+      state.show_archives = not state.show_archives
+      load_sessions(state)
+      render_dashboard(state)
+    end
   end, "Toggle archived session progress")
   map("R", function()
     load_sessions(state)
     render_dashboard(state)
   end, "Refresh session dashboard")
-  map("?", show_help, "Session dashboard help")
+  map("?", function()
+    show_help(state)
+  end, "Session dashboard help")
+end
+
+local function schedule_cursor_focus_sync(state)
+  if not dashboard_valid(state) then
+    return
+  end
+  local row = vim.api.nvim_win_get_cursor(state.winid)[1]
+  local item = state.line_map[row]
+  if not item or not item.session_id or item.session_id == state.focused_session_id then
+    return
+  end
+
+  state.pending_focus_id = item.session_id
+  if state.focus_sync_scheduled then
+    return
+  end
+  state.focus_sync_scheduled = true
+  vim.schedule(function()
+    state.focus_sync_scheduled = false
+    local session_id = state.pending_focus_id
+    state.pending_focus_id = nil
+    if not dashboard_valid(state) or not session_id or session_id == state.focused_session_id then
+      return
+    end
+    local session = session_by_id(state, session_id)
+    if not session then
+      return
+    end
+    state.focused_session_id = session_id
+    local key = "session:" .. session_id
+    if state.mode == "tags" and session.notes and session.notes[1] then
+      key = "entry:" .. session.notes[1].id
+    end
+    render_dashboard(state, key)
+  end)
 end
 
 local function start_dashboard_timer(state)
@@ -1248,7 +1415,8 @@ function M.open(opts)
     if opts.current_notes then
       for _, session in ipairs(active_dashboard.sessions) do
         if session.current then
-          active_dashboard.expanded[session.session_id] = true
+          active_dashboard.mode = "tags"
+          active_dashboard.focused_session_id = session.session_id
           local key = session.notes[1] and "entry:" .. session.notes[1].id or "session:" .. session.session_id
           render_dashboard(active_dashboard, key)
           break
@@ -1274,7 +1442,8 @@ function M.open(opts)
     bufnr = bufnr,
     line_map = {},
     sessions = {},
-    expanded = {},
+    mode = opts.current_notes and "tags" or "sessions",
+    focused_session_id = nil,
     show_archives = false,
     animation_frame = 1,
     timer_closed = false,
@@ -1304,11 +1473,11 @@ function M.open(opts)
   state.winid = winid
   active_dashboard = state
 
-  local preferred_key
+  local preferred_key = state.focused_session_id and "session:" .. state.focused_session_id or nil
   if opts.current_notes then
     for _, session in ipairs(state.sessions) do
       if session.current then
-        state.expanded[session.session_id] = true
+        state.focused_session_id = session.session_id
         preferred_key = session.notes[1] and "entry:" .. session.notes[1].id or "session:" .. session.session_id
         break
       end
@@ -1349,6 +1518,13 @@ function M.open(opts)
         })
       end
       render_dashboard(state)
+    end,
+  })
+  vim.api.nvim_create_autocmd("CursorMoved", {
+    group = group,
+    buffer = bufnr,
+    callback = function()
+      schedule_cursor_focus_sync(state)
     end,
   })
 end

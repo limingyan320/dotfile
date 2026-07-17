@@ -24,7 +24,7 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 - `autoread` + `updatetime = 500`（缩短 `CursorHold` 触发间隔让外部改动近实时可见）
 - 外部改动侦测：`FocusGained` / `BufEnter` / `CursorHold{,I}` / `TermLeave` 主动 `checktime`；每个文件 buffer 还会跑一个 `uv.new_fs_event` watcher，被外部改动后弹 WARN `文件被外部修改，已重新加载`
 - terminal mode 使用不闪烁的黄色实心块光标；`<leader>t` 打开完整 terminal buffer；`<C-/>` / `<C-_>` 切换普通 shell 并自动进入输入，`<M-/>` 切换 `codex --yolo` agent 并保持 terminal-normal 方便继续阅读；对应 session 的 Codex drawer 成为前台当前窗口且视口位于最新输出时会自动 check，清除完成未读标记并联动关闭对应 macOS popup；两个通道共享底部 drawer，但各自保留 buffer / 进程，Codex 首次从当前上下文的 git 根启动；Codex terminal-normal 中的 `gx` 会把光标下或 visual 选中的相对路径按该会话启动根解析，并在上一个编辑窗口打开
-- Neovim 0.12 live session：交互式 shell 的 `nvim` / `nvim .` / `vim` 由独立的 `dotfiles-nvim-host` tmux server 托管，host 需通过 RPC 探活才会接入 UI；terminal 意外关闭后进程仍存活；`<leader>d` 主动脱离；`<leader>fs` 打开 Mason 风格的原生 Session Dashboard，`<leader>fS` 直接展开当前 session 的进度；Dashboard 列出 `CURRENT` / `DETACHED` / `ATTACHED`，支持连接、新建、重命名、删除、Codex 状态动画和按时间分组的人工进度日志；日志是本机 state 目录里的 Markdown，约 400ms debounce 自动保存，session 退出后保留为可切换查看的 archive；跨 session 状态读取仍走总等待上限 700ms 的并行外部 RPC，日志读取不增加 RPC；前台仍是直接 remote UI，普通 `tmux ls` 不显示隐藏 host，`:qa` 会清理对应 live session / socket但保留日志
+- Neovim 0.12 live session：交互式 shell 的 `nvim` / `nvim .` / `vim` 由独立的 `dotfiles-nvim-host` tmux server 托管，host 需通过 RPC 探活才会接入 UI；terminal 意外关闭后进程仍存活；`<leader>d` 主动脱离；`<leader>fs` 打开 Mason 风格的原生 Session Dashboard，聚焦 session 时自动 cascade 展开其 tag，`<leader>fS` 直接进入当前 session 的 Tag 模式；Dashboard 列出 `CURRENT` / `DETACHED` / `ATTACHED`，支持连接、新建、重命名、删除、Codex 状态动画和按时间分组的人工进度日志；日志是本机 state 目录里的 Markdown，约 400ms debounce 自动保存，session 退出后保留为可切换查看的 archive；跨 session 状态读取仍走总等待上限 700ms 的并行外部 RPC，日志读取不增加 RPC；前台仍是直接 remote UI，普通 `tmux ls` 不显示隐藏 host，`:qa` 会清理对应 live session / socket但保留日志
 - netrw 禁用（`vim.g.loaded_netrw = 1`），文件浏览全走 oil
 
 ## 自定义键位（非插件）
@@ -90,11 +90,11 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 
 ### 原生 Live Session Dashboard
 
-`<leader>fs` 打开 normal-first 的 Mason 风格 Dashboard；live session 按 `CURRENT` → `DETACHED` → `ATTACHED` 排列。最左侧固定 3 格 agent 列中，流动 `●··` 表示 Codex working，闪烁红色 `!` 表示 ready/unread；`◆ 数量 · 新鲜度` 表示已有人工进度，`◇ 0` 表示无记录。跨 session RPC 仍并行且总超时 700ms，日志只从本机 `${DOTFILES_NVIM_SESSION_DIR}/notes/` 读取。
+`<leader>fs` 打开 normal-first 的 Mason 风格 Dashboard 并进入 `Nvim Sessions` 模式；live session 按 `CURRENT` → `DETACHED` → `ATTACHED` 排列。最左侧固定 3 格 agent 列中，流动 `●··` 表示 Codex working，闪烁红色 `!` 表示 ready/unread；`◆ 数量 · 新鲜度` 表示已有人工进度，`◇ 0` 表示无记录。聚焦的 session 有 tag 时会自动 cascade 展开，移动到其他 session 后旧 cascade 自动收起。跨 session RPC 仍并行且总超时 700ms，日志只从本机 `${DOTFILES_NVIM_SESSION_DIR}/notes/` 读取。
 
-`j` / `k`、`gg` / `G` 在 session 和进度记录之间移动；`Enter` 在 session 行连接、在记录行打开 Markdown 编辑器；`t` 展开时间轴；`a` 新建 timestamp 记录并进入 insert；`e` 编辑选中或最新记录；`x` 把记录移到该 session 的 `trash/`；`c` 新建 session；`r` / `<C-r>` 重命名；`dd` 确认删除选中的 live session并保留日志，其中 `CURRENT` 确认后本地执行 `qa!`、当前 UI 返回 shell，其他 session 仍走远端 RPC；`A` 切换 archive；`R` 刷新；`/` 使用 Vim 原生搜索；`?` 帮助；`q` / `Esc` 关闭。
+Session 模式中 `j` / `k`、`gg` / `G` 只移动 session，`Enter` 连接，`t` 进入标题明确标识的 `Session Tags · 名称` 子模式；`c` 新建，`r` / `<C-r>` 重命名，`dd` 确认删除 live session 并保留日志，其中 `CURRENT` 确认后本地执行 `qa!`、当前 UI 返回 shell，其他 session 仍走远端 RPC；`A` 切换 archive。Tag 模式中移动键只遍历 tag，`Enter` / `e` 在 normal mode 打开选中 Markdown，`i` 打开并进入 insert，`a` 新建 timestamp tag 并进入 insert，`dd` / `x` 把 tag 移到该 session 的 `trash/`；`t` / `q` / `Esc` 返回 Session 模式。`R` 两层都刷新；`/` 使用 Vim 原生搜索；`?` 显示当前模式帮助；Session 模式的 `q` / `Esc` 关闭 Dashboard。
 
-进度编辑器是真实 Markdown 文件 buffer，完整支持 Vim normal / insert；TextChanged 停止约 400ms 后自动写盘，`InsertLeave` / `BufLeave` 也强制保存，normal mode `q` 保存并返回 Dashboard，`Ctrl+S` 立即保存。每条记录的原始 epoch 在文件名中，Dashboard 按本机时区呈现 `Today` / `Yesterday` / 日期；session 退出或被删除后，日志仍可按 `A` 查看和编辑。`<leader>fS` 打开同一 Dashboard、展开当前 session 并定位最新记录。
+Tag 操作层只是 Dashboard 的 UI 子模式，两层实际都仍处于 Vim normal mode。进度编辑器是真实 Markdown 文件 buffer，完整支持 Vim normal / insert；TextChanged 停止约 400ms 后自动写盘，`InsertLeave` / `BufLeave` 也强制保存，编辑器 normal mode `q` 保存并返回 Tag 模式，`Ctrl+S` 立即保存。每条记录的原始 epoch 在文件名中，Dashboard 按本机时区呈现 `Today` / `Yesterday` / 日期；session 退出或被删除后，日志仍可在 Session 模式按 `A` 查看和编辑。`<leader>fS` 打开同一 Dashboard、进入当前 session 的 Tag 模式并定位最新记录。
 
 ### `nvim-telescope/telescope.nvim` (+ `telescope-file-browser.nvim`, `dressing.nvim`)
 
