@@ -24,7 +24,7 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 - `autoread` + `updatetime = 500`（缩短 `CursorHold` 触发间隔让外部改动近实时可见）
 - 外部改动侦测：`FocusGained` / `BufEnter` / `CursorHold{,I}` / `TermLeave` 主动 `checktime`；每个文件 buffer 还会跑一个 `uv.new_fs_event` watcher，被外部改动后弹 WARN `文件被外部修改，已重新加载`
 - terminal mode 使用不闪烁的黄色实心块光标；`<leader>t` 打开完整 terminal buffer；`<C-/>` / `<C-_>` 切换普通 shell 并自动进入输入，`<M-/>` 切换 `codex --yolo` agent 并保持 terminal-normal 方便继续阅读；对应 session 的 Codex drawer 成为前台当前窗口且视口位于最新输出时会自动 check，清除完成未读标记并联动关闭对应 macOS popup；两个通道共享底部 drawer，但各自保留 buffer / 进程，Codex 首次从当前上下文的 git 根启动；Codex terminal-normal 中的 `gx` 会把光标下或 visual 选中的相对路径按该会话启动根解析，并在上一个编辑窗口打开
-- Neovim 0.12 live session：交互式 shell 的 `nvim` / `nvim .` / `vim` 由独立的 `dotfiles-nvim-host` tmux server 托管，terminal 意外关闭后进程仍存活；`<leader>d` 主动脱离；`<leader>fs` 始终打开 normal-first Session Manager，列出 `CURRENT` / `DETACHED` / `ATTACHED`，并在最左侧用流动三点表示 Codex working、闪烁红色 `!` 表示 ready/unread；可命名、搜索、新建、连接，并用 `dd` 确认删除非当前 session；前台仍是直接 remote UI，普通 `tmux ls` 不显示隐藏 host，`:qa` 会清理对应 session / socket
+- Neovim 0.12 live session：交互式 shell 的 `nvim` / `nvim .` / `vim` 由独立的 `dotfiles-nvim-host` tmux server 托管，host 需通过 RPC 探活才会接入 UI；terminal 意外关闭后进程仍存活；`<leader>d` 主动脱离；`<leader>fs` 始终打开 normal-first Session Manager，列出 `CURRENT` / `DETACHED` / `ATTACHED`，并在最左侧用流动三点表示 Codex working、闪烁红色 `!` 表示 ready/unread；跨 session 状态读取走并行外部 RPC 且总等待上限 700ms，单个无响应实例会被跳过而不会卡住当前 UI 或被自动杀掉；可命名、搜索、新建、连接，并用 `dd` 确认删除非当前 session；前台仍是直接 remote UI，普通 `tmux ls` 不显示隐藏 host，`:qa` 会清理对应 session / socket
 - netrw 禁用（`vim.g.loaded_netrw = 1`），文件浏览全走 oil
 
 ## 自定义键位（非插件）
@@ -102,7 +102,7 @@ picker 内自定义键位：
 | `<M-s>` | `select_horizontal`（上下分屏打开） |
 | `<C-h>` | `toggle_hidden`：重开 picker，打开 `hidden = true` + `no_ignore = true`，**保留当前输入** |
 
-Session Manager（`<leader>fs`）始终以 normal mode 打开，即使只有当前 session 也显示；按 `CURRENT` → `DETACHED` → `ATTACHED` 排序。最左侧固定 3 格 agent 列中，流动 `●··` 表示 Codex working，闪烁红色 `!` 表示 ready/unread，动画仅在 picker 打开时运行且刷新不会重置当前选择。名称列按最长名称和 picker 打开时的实际宽度动态伸缩（上限 40 显示列），buffer 占剩余空间，统计列固定在最右侧。`j` / `k` 选择，`Enter` 连接，`c` 通过 dressing 浮窗命名并创建新 session，`r` / `<C-r>` 浮窗重命名，`dd` 浮窗确认后强制删除选中的非当前 session（默认 `Cancel`，显示修改 / terminal / UI 风险；`CURRENT` 需用 `:qa` / `:qa!` 退出当前 Nvim），`i` / `a` 进入 insert mode 搜索名称 / 项目 / buffer / cwd，`?` 查看帮助。命名后的空白 session 切走时也会保留。
+Session Manager（`<leader>fs`）始终以 normal mode 打开，即使只有当前 session 也显示；按 `CURRENT` → `DETACHED` → `ATTACHED` 排序。最左侧固定 3 格 agent 列中，流动 `●··` 表示 Codex working，闪烁红色 `!` 表示 ready/unread，动画仅在 picker 打开且至少有一个 UI 接入时刷新，UI 全部脱离后暂停、重连后继续，刷新不会重置当前选择。名称列按最长名称和 picker 打开时的实际宽度动态伸缩（上限 40 显示列），buffer 占剩余空间，统计列固定在最右侧。`j` / `k` 选择，`Enter` 连接，`c` 通过 dressing 浮窗命名并创建新 session，`r` / `<C-r>` 浮窗重命名，`dd` 浮窗确认后强制删除选中的非当前 session（默认 `Cancel`，显示修改 / terminal / UI 风险；`CURRENT` 需用 `:qa` / `:qa!` 退出当前 Nvim），`i` / `a` 进入 insert mode 搜索名称 / 项目 / buffer / cwd，`?` 查看帮助。命名后的空白 session 切走时也会保留。
 
 file_browser 扩展 opts：`hidden = true`, `grouped = true`（目录排前面）, `respect_gitignore = false`, `hijack_netrw = false`（交给 oil）
 

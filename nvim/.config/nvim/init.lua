@@ -223,21 +223,130 @@ return {
 }
 ]=]
 
-local function fetch_nvim_session(address)
-  local connect_ok, chan = pcall(vim.fn.sockconnect, "pipe", address, { rpc = true })
-  if not connect_ok or type(chan) ~= "number" or chan <= 0 then
-    return nil
+local nvim_rpc_timeout_ms = 700
+
+local function remote_nvim_expression(lua_code, args)
+  local wrapped = ("assert(loadstring(%q))(unpack(vim.json.decode(%q)))")
+    :format(lua_code, vim.json.encode(args or {}))
+  return "json_encode(luaeval(" .. vim.fn.string(wrapped) .. "))"
+end
+
+local function decode_remote_nvim_result(result)
+  if not result or result.code ~= 0 then
+    local detail = result and vim.trim(result.stderr or "") or ""
+    if result and result.code == 124 then
+      detail = "RPC 请求超时"
+    elseif detail == "" then
+      detail = "RPC 请求失败"
+    end
+    return nil, detail
   end
 
-  local request_ok, info = pcall(vim.rpcrequest, chan, "nvim_exec_lua", session_info_lua, {})
-  pcall(vim.fn.chanclose, chan)
-  if not request_ok or type(info) ~= "table" then
-    return nil
+  local output = vim.trim(result.stdout or "")
+  if output == "" then
+    return nil, "RPC 返回为空"
+  end
+  local decode_ok, value = pcall(vim.json.decode, output)
+  if not decode_ok then
+    return nil, "RPC 返回无法解析: " .. tostring(value)
+  end
+  return value
+end
+
+local function start_remote_nvim_request(address, lua_code, args, callback)
+  local start_ok, process = pcall(vim.system, {
+    vim.v.progpath,
+    "--server",
+    address,
+    "--remote-expr",
+    remote_nvim_expression(lua_code, args),
+  }, { text = true }, function(result)
+    vim.schedule(function()
+      callback(decode_remote_nvim_result(result))
+    end)
+  end)
+  if not start_ok then
+    return nil, tostring(process)
+  end
+  return process
+end
+
+local function request_remote_nvim(address, lua_code, args)
+  local start_ok, process = pcall(vim.system, {
+    vim.v.progpath,
+    "--server",
+    address,
+    "--remote-expr",
+    remote_nvim_expression(lua_code, args),
+  }, { text = true })
+  if not start_ok then
+    return nil, tostring(process)
+  end
+  return decode_remote_nvim_result(process:wait(nvim_rpc_timeout_ms))
+end
+
+local function fetch_nvim_session(address)
+  local info, err = request_remote_nvim(address, session_info_lua)
+  if type(info) ~= "table" then
+    return nil, err
   end
 
   info.address = address
   info.current = false
   return info
+end
+
+local function fetch_nvim_sessions(addresses)
+  local sessions = {}
+  local probes = {}
+  local pending = 0
+
+  for _, address in ipairs(addresses) do
+    local probe = { address = address, done = false, cancelled = false }
+    probes[#probes + 1] = probe
+    pending = pending + 1
+    local process, err = start_remote_nvim_request(address, session_info_lua, nil, function(info, request_err)
+      if probe.cancelled then
+        return
+      end
+      probe.done = true
+      probe.error = request_err
+      pending = pending - 1
+      if type(info) == "table" then
+        info.address = address
+        info.current = false
+        sessions[#sessions + 1] = info
+      end
+    end)
+    probe.process = process
+    if not process then
+      probe.done = true
+      probe.error = err
+      pending = pending - 1
+    end
+  end
+
+  if pending > 0 then
+    vim.wait(nvim_rpc_timeout_ms, function()
+      return pending == 0
+    end, 10)
+  end
+
+  local failed = {}
+  for _, probe in ipairs(probes) do
+    if not probe.done then
+      probe.cancelled = true
+      probe.error = "RPC 请求超时"
+      if probe.process then
+        pcall(probe.process.kill, probe.process, "sigkill")
+      end
+    end
+    if probe.error then
+      failed[#failed + 1] = probe.address
+    end
+  end
+
+  return sessions, failed
 end
 
 local function current_nvim_session_info()
@@ -317,9 +426,9 @@ local function remove_stale_managed_nvim_socket(address)
     "has-session",
     "-t",
     session_id,
-  }, { text = true, env = { TMUX = "" } }):wait()
+  }, { text = true, env = { TMUX = "" } }):wait(nvim_rpc_timeout_ms)
   local stat = uv.fs_stat(address)
-  if result.code ~= 0 and stat and stat.type == "socket" then
+  if result.code ~= 0 and result.code ~= 124 and stat and stat.type == "socket" then
     uv.fs_unlink(address)
   end
 end
@@ -335,6 +444,7 @@ local function discover_nvim_sessions()
 
   local sessions = {}
   local seen = {}
+  local pending_addresses = {}
   local current = current_nvim_session_info()
   if current then
     table.insert(sessions, current)
@@ -344,13 +454,14 @@ local function discover_nvim_sessions()
   for _, address in ipairs(addresses) do
     if not seen[address] then
       seen[address] = true
-      local session = fetch_nvim_session(address)
-      if session then
-        table.insert(sessions, session)
-      else
-        remove_stale_managed_nvim_socket(address)
-      end
+      pending_addresses[#pending_addresses + 1] = address
     end
+  end
+
+  local discovered, failed = fetch_nvim_sessions(pending_addresses)
+  vim.list_extend(sessions, discovered)
+  for _, address in ipairs(failed) do
+    remove_stale_managed_nvim_socket(address)
   end
 
   table.sort(sessions, function(a, b)
@@ -462,12 +573,8 @@ local function sync_nvim_session_environment(address)
     environment[name] = value and value ~= "" and value or false
   end
 
-  local connect_ok, chan = pcall(vim.fn.sockconnect, "pipe", address, { rpc = true })
-  if not connect_ok or type(chan) ~= "number" or chan <= 0 then
-    return
-  end
-  pcall(vim.rpcrequest, chan, "nvim_exec_lua", sync_session_environment_lua, { environment })
-  pcall(vim.fn.chanclose, chan)
+  local accepted, err = request_remote_nvim(address, sync_session_environment_lua, { environment })
+  return accepted == true, err
 end
 
 local set_session_name_lua = [=[
@@ -492,15 +599,9 @@ local function set_nvim_session_name(session, name)
     return true
   end
 
-  local connect_ok, chan = pcall(vim.fn.sockconnect, "pipe", session.address, { rpc = true })
-  if not connect_ok or type(chan) ~= "number" or chan <= 0 then
-    return false, "目标 session 已不可用"
-  end
-
-  local request_ok, result = pcall(vim.rpcrequest, chan, "nvim_exec_lua", set_session_name_lua, { name })
-  pcall(vim.fn.chanclose, chan)
-  if not request_ok then
-    return false, tostring(result)
+  local result, err = request_remote_nvim(session.address, set_session_name_lua, { name })
+  if result == nil then
+    return false, err or "目标 session 已不可用"
   end
   return true
 end
@@ -563,14 +664,14 @@ local function stop_managed_nvim_session(address)
     "kill-session",
     "-t",
     session_id,
-  }, { text = true, env = { TMUX = "" } }):wait()
-  local stat = uv.fs_stat(address)
-  if stat and stat.type == "socket" then
-    uv.fs_unlink(address)
-  end
+  }, { text = true, env = { TMUX = "" } }):wait(nvim_rpc_timeout_ms)
   if result.code ~= 0 then
     local detail = vim.trim(result.stderr or "")
     return false, detail ~= "" and detail or "隐藏 tmux session 未能停止"
+  end
+  local stat = uv.fs_stat(address)
+  if stat and stat.type == "socket" then
+    uv.fs_unlink(address)
   end
   return true
 end
@@ -593,24 +694,13 @@ local function stop_nvim_session(session, callback)
     callback(stopped, err)
   end
 
-  local connect_ok, chan = pcall(vim.fn.sockconnect, "pipe", session.address, { rpc = true })
-  if not connect_ok or type(chan) ~= "number" or chan <= 0 then
-    if managed_nvim_session_id(session.address) then
-      force_stop_managed()
-    else
-      callback(false, "目标 session 已不可用")
-    end
-    return
-  end
-
   -- 让目标 Nvim 在当前 RPC 返回后自行退出，避免 qa! 让请求半途断开。
-  local request_ok, accepted = pcall(vim.rpcrequest, chan, "nvim_exec_lua", stop_session_lua, {})
-  pcall(vim.fn.chanclose, chan)
-  if not request_ok or accepted ~= true then
+  local accepted, err = request_remote_nvim(session.address, stop_session_lua)
+  if accepted ~= true then
     if managed_nvim_session_id(session.address) then
       force_stop_managed()
     else
-      callback(false, tostring(accepted))
+      callback(false, err or "目标 session 已不可用")
     end
     return
   end
@@ -636,7 +726,11 @@ local function connect_to_nvim_session(address, keep_current)
     return true
   end
   vim.g.dotfiles_session_last_active = os.time()
-  sync_nvim_session_environment(address)
+  local sync_ok, sync_err = sync_nvim_session_environment(address)
+  if not sync_ok then
+    vim.notify("连接 Nvim 会话失败: " .. tostring(sync_err or "目标 session 已不可用"), vim.log.levels.ERROR)
+    return false
+  end
   local command = keep_current and "connect " or "connect! "
   local ok, err = pcall(vim.cmd, command .. vim.fn.fnameescape(address))
   if not ok then
@@ -727,7 +821,7 @@ if supports_nvim_sessions then
     once = true,
     callback = function()
       vim.defer_fn(function()
-        if vim.g.dotfiles_session_instance ~= 1 or #vim.api.nvim_list_uis() == 0 then
+        if not current_nvim_session_is_managed() or #vim.api.nvim_list_uis() == 0 then
           return
         end
         local detached_count = 0
@@ -2473,6 +2567,9 @@ require("lazy").setup({
             animation_timer:start(220, 220, vim.schedule_wrap(function()
               if timer_closed or not vim.api.nvim_buf_is_valid(prompt_bufnr) then
                 close_animation_timer()
+                return
+              end
+              if #vim.api.nvim_list_uis() == 0 then
                 return
               end
               animation_frame = animation_frame + 1

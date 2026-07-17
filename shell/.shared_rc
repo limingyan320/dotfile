@@ -20,7 +20,7 @@ __dotfiles_nvim_start_host() {
         return 1
     }
 
-    local session_id socket attempt
+    local session_id socket attempt probe_pid
     session_id="nvim-$(date +%s)-$$-${RANDOM:-0}"
     socket="$DOTFILES_NVIM_SESSION_DIR/$session_id.sock"
 
@@ -100,6 +100,30 @@ __dotfiles_nvim_start_host() {
         TMUX= command tmux -L "$DOTFILES_NVIM_TMUX_SERVER" kill-session -t "$session_id" 2>/dev/null
         rm -f "$socket"
         printf '%s\n' "nvim: persistent session did not become ready" >&2
+        return 1
+    fi
+
+    command nvim --server "$socket" --remote-expr "1" >/dev/null 2>&1 &
+    probe_pid=$!
+    attempt=0
+    while [ "$attempt" -lt 100 ] && kill -0 "$probe_pid" 2>/dev/null; do
+        sleep 0.02
+        attempt=$((attempt + 1))
+    done
+
+    if kill -0 "$probe_pid" 2>/dev/null; then
+        kill -KILL "$probe_pid" 2>/dev/null
+        wait "$probe_pid" 2>/dev/null || true
+        TMUX= command tmux -L "$DOTFILES_NVIM_TMUX_SERVER" kill-session -t "$session_id" 2>/dev/null
+        rm -f "$socket"
+        printf '%s\n' "nvim: persistent session RPC probe timed out" >&2
+        return 1
+    fi
+
+    if ! wait "$probe_pid"; then
+        TMUX= command tmux -L "$DOTFILES_NVIM_TMUX_SERVER" kill-session -t "$session_id" 2>/dev/null
+        rm -f "$socket"
+        printf '%s\n' "nvim: persistent session RPC probe failed" >&2
         return 1
     fi
 
