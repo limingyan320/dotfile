@@ -92,7 +92,7 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 
 `<leader>fs` 打开 normal-first 的 Mason 风格 Dashboard；live session 按 `CURRENT` → `DETACHED` → `ATTACHED` 排列。最左侧固定 3 格 agent 列中，流动 `●··` 表示 Codex working，闪烁红色 `!` 表示 ready/unread；`◆ 数量 · 新鲜度` 表示已有人工进度，`◇ 0` 表示无记录。跨 session RPC 仍并行且总超时 700ms，日志只从本机 `${DOTFILES_NVIM_SESSION_DIR}/notes/` 读取。
 
-`j` / `k`、`gg` / `G` 在 session 和进度记录之间移动；`Enter` 在 session 行连接、在记录行打开 Markdown 编辑器；`t` 展开时间轴；`a` 新建 timestamp 记录并进入 insert；`e` 编辑选中或最新记录；`x` 把记录移到该 session 的 `trash/`；`c` 新建 session；`r` / `<C-r>` 重命名；`dd` 确认删除非当前 live session但保留日志；`A` 切换 archive；`R` 刷新；`/` 使用 Vim 原生搜索；`?` 帮助；`q` / `Esc` 关闭。
+`j` / `k`、`gg` / `G` 在 session 和进度记录之间移动；`Enter` 在 session 行连接、在记录行打开 Markdown 编辑器；`t` 展开时间轴；`a` 新建 timestamp 记录并进入 insert；`e` 编辑选中或最新记录；`x` 把记录移到该 session 的 `trash/`；`c` 新建 session；`r` / `<C-r>` 重命名；`dd` 确认删除选中的 live session并保留日志，其中 `CURRENT` 确认后本地执行 `qa!`、当前 UI 返回 shell，其他 session 仍走远端 RPC；`A` 切换 archive；`R` 刷新；`/` 使用 Vim 原生搜索；`?` 帮助；`q` / `Esc` 关闭。
 
 进度编辑器是真实 Markdown 文件 buffer，完整支持 Vim normal / insert；TextChanged 停止约 400ms 后自动写盘，`InsertLeave` / `BufLeave` 也强制保存，normal mode `q` 保存并返回 Dashboard，`Ctrl+S` 立即保存。每条记录的原始 epoch 在文件名中，Dashboard 按本机时区呈现 `Today` / `Yesterday` / 日期；session 退出或被删除后，日志仍可按 `A` 查看和编辑。`<leader>fS` 打开同一 Dashboard、展开当前 session 并定位最新记录。
 

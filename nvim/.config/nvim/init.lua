@@ -685,7 +685,7 @@ return true
 
 local function stop_nvim_session(session, callback)
   if session.current or session.address == vim.v.servername then
-    callback(false, "当前 session 不能从 Session Manager 删除")
+    callback(false, "当前 session 必须由本地 UI 退出，不能对自身发送停止 RPC")
     return
   end
 
@@ -719,6 +719,15 @@ local function stop_nvim_session(session, callback)
     end
   end
   vim.defer_fn(wait_for_exit, 100)
+end
+
+local function stop_current_nvim_session()
+  vim.schedule(function()
+    local ok, err = pcall(vim.cmd, "qa!")
+    if not ok then
+      vim.notify("删除当前 Nvim session 失败: " .. tostring(err), vim.log.levels.ERROR)
+    end
+  end)
 end
 
 local function connect_to_nvim_session(address, keep_current)
@@ -868,6 +877,7 @@ if supports_nvim_sessions then
     end,
     rename_session = set_nvim_session_name,
     stop_session = stop_nvim_session,
+    stop_current_session = stop_current_nvim_session,
     clear_agent = function(address)
       clear_codex_agent(address, false)
     end,

@@ -1052,9 +1052,6 @@ local function delete_session(state)
   elseif session.archived then
     vim.notify("归档日志不会随 live session 删除", vim.log.levels.WARN)
     return
-  elseif session.current then
-    vim.notify("当前 session 无法在管理器中删除，请使用 :qa 或 :qa!", vim.log.levels.WARN)
-    return
   end
 
   local risks = {}
@@ -1067,16 +1064,31 @@ local function delete_session(state)
   if session.ui_count > 0 then
     risks[#risks + 1] = ("%d attached UI(s)"):format(session.ui_count)
   end
-  local delete_label = "Delete - force close this session"
-  if #risks > 0 then
+  local delete_label
+  if session.current then
+    delete_label = "Delete current - force close and return to shell"
+  else
+    delete_label = "Delete - force close this session"
+  end
+  if session.current and #risks > 0 then
+    delete_label = "Delete current - return to shell; closes " .. table.concat(risks, ", ")
+  elseif #risks > 0 then
     delete_label = "Delete - closes " .. table.concat(risks, ", ")
   end
 
   vim.ui.select({ "Cancel", delete_label }, {
-    prompt = ("Delete session %q?"):format(display_name(session)),
+    prompt = session.current and ("Delete CURRENT session %q? Progress notes stay archived."):format(
+      display_name(session)
+    ) or ("Delete session %q?"):format(display_name(session)),
     kind = "dotfiles_nvim_session_delete",
   }, function(choice)
     if choice ~= delete_label then
+      return
+    end
+    if session.current then
+      if close_dashboard(state) then
+        config.stop_current_session(session)
+      end
       return
     end
     config.stop_session(session, function(stopped, err)
@@ -1214,6 +1226,7 @@ end
 function M.setup(opts)
   assert(type(opts) == "table", "session dashboard setup requires options")
   assert(type(opts.discover_sessions) == "function", "discover_sessions callback is required")
+  assert(type(opts.stop_current_session) == "function", "stop_current_session callback is required")
   config = opts
   config.normalize_name = config.normalize_name or trim
   config.read_agent_state = config.read_agent_state or function()

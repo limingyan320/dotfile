@@ -90,7 +90,7 @@ Neovim 0.12 可以把当前 TUI 脱离，但让原来的 Nvim 进程继续在后
 | Dashboard 内 `x` | 删除选中的进度记录；实际移动到该 session 的 `trash/`，可手工恢复 |
 | Dashboard 内 `c` | 浮窗输入名称，在当前 cwd 创建新 session、保留旧 session 并立即切换 |
 | Dashboard 内 `r` / `Ctrl+R` | 浮窗重命名选中的 live session |
-| Dashboard 内 `dd` | 删除选中的非当前 live session；浮窗默认停在 `Cancel`，确认前显示未保存 buffer、terminal 和已连接 UI 风险；进度日志保留为归档 |
+| Dashboard 内 `dd` | 删除选中的 live session；浮窗默认停在 `Cancel`，确认前显示未保存 buffer、terminal 和已连接 UI 风险；删除 `CURRENT` 后当前 UI 返回 shell，进度日志保留为归档 |
 | Dashboard 内 `A` / `R` | 切换显示归档日志 / 重新扫描 live sessions |
 | Dashboard 内 `/`、`n` / `N` | 使用 Vim 原生搜索查找当前已展开内容、跳到下 / 上一个匹配 |
 | Dashboard 内 `?` | 显示 Dashboard 快捷键帮助 |
@@ -113,7 +113,7 @@ live 列表按 `CURRENT`、`DETACHED`、`ATTACHED` 排序，并显示 Codex 状�
 
 当前 session 的逻辑名称也会显示在底部状态栏最左侧，使用独立的青色背景与后面的 Vim 模式区分；未显式命名时同样回退为项目目录名，过长名称会截断。通过 Dashboard 重命名后状态栏会立即更新；不受 live session 系统管理的特殊 Nvim 实例不显示该组件。
 
-`dd` 会强制结束目标 live session，因此未保存修改和其中的 terminal 进程都会关闭；目标仍有其他 UI 连接时也会明确提示。确认框默认选中 `Cancel`，`Esc` 也会取消。`CURRENT` 不允许从 Dashboard 删除，需明确使用 `:qa` / `:qa!` 退出当前 Nvim；无论哪种退出方式，已有进度日志都保留为 archive。
+`dd` 会强制结束目标 live session，因此未保存修改和其中的 terminal 进程都会关闭；目标仍有其他 UI 连接时也会明确提示。确认框默认选中 `Cancel`，`Esc` 也会取消。删除其他 session 后 Dashboard 会刷新；删除 `CURRENT` 时，确认项会明确写出 `return to shell`，随后本地执行 `qa!`，当前 remote UI 和隐藏 host 一起退出并回到外层 shell。两种路径都不会删除已有进度日志。
 
 从刚启动的未命名空白 `nvim` / `nvim .` 连接时，这个入口实例会自动回收；如果当前实例已命名、已有分屏、多个 buffer、未保存修改、terminal，或它本身曾被 detach，则切换后仍留在后台，可以再通过 `Space fs` 切回来。
 

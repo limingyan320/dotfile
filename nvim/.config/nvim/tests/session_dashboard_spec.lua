@@ -49,6 +49,7 @@ assert_equal(entries[1].preview, "implemented dashboard", "entry preview")
 assert_equal(store:load_metadata(fake_session).name, "dotfiles work", "session metadata")
 
 local sessions = { fake_session, second_session }
+local stopped_current_session
 dashboard.setup({
   notes_dir = notes_root,
   discover_sessions = function()
@@ -67,6 +68,9 @@ dashboard.setup({
     return true
   end,
   stop_session = function() end,
+  stop_current_session = function(session)
+    stopped_current_session = session
+  end,
   clear_agent = function() end,
   autosave_delay = 20,
 })
@@ -162,6 +166,32 @@ vim.api.nvim_set_current_win(state.winid)
 local close_dashboard_mapping = vim.fn.maparg("q", "n", false, true)
 close_dashboard_mapping.callback()
 assert(dashboard._active_dashboard() == nil, "dashboard should close cleanly")
+
+sessions = { fake_session, second_session }
+dashboard.open()
+state = assert(dashboard._active_dashboard())
+vim.api.nvim_set_current_win(state.winid)
+local delete_mapping = vim.fn.maparg("dd", "n", false, true)
+assert(type(delete_mapping.callback) == "function", "dashboard delete mapping is missing")
+
+local original_select = vim.ui.select
+vim.ui.select = function(items, opts, callback)
+  assert_equal(items[1], "Cancel", "current delete defaults to cancel")
+  assert(opts.prompt:find("Progress notes stay archived", 1, true), "current delete explains archive behavior")
+  callback(items[1])
+end
+delete_mapping.callback()
+assert(stopped_current_session == nil, "cancel should keep the current session")
+assert(dashboard._active_dashboard() == state, "cancel should keep the dashboard open")
+
+vim.ui.select = function(items, _, callback)
+  assert(items[2]:find("return to shell", 1, true), "current delete explains UI exit")
+  callback(items[2])
+end
+delete_mapping.callback()
+vim.ui.select = original_select
+assert_equal(stopped_current_session.name, fake_session.name, "confirmed current session delete")
+assert(dashboard._active_dashboard() == nil, "current session delete should close the dashboard")
 
 vim.fs.rm(notes_root, { recursive = true, force = true })
 print("session dashboard: ok")
