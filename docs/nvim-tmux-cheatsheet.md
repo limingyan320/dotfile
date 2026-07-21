@@ -79,7 +79,7 @@
 
 ## Live Session（像 tmux detach / attach）
 
-Neovim 0.12 可以把当前 TUI 脱离，但让原来的 Nvim 进程继续在后台运行；窗口布局、buffer、未保存修改以及普通 shell / Codex terminal 都会原样保留。交互式 shell 里的普通 `nvim` / `nvim .` / `vim` 会由独立的隐藏 tmux server 托管，因此即使承载 TUI 的 terminal 窗口被意外关闭，Nvim 进程和视图也仍会存活。
+Neovim 0.12 可以把当前 TUI 脱离，但让原来的 Nvim 进程继续在后台运行；窗口布局、buffer、未保存修改以及普通 shell / Codex terminal 都会原样保留。交互式 shell 里的普通 `nvim` / `nvim .` / `vim` 会由独立的隐藏 tmux server 托管，因此即使承载 TUI 的 terminal 窗口被意外关闭，Nvim 进程和视图也仍会存活。若提示版本过低，先运行 `type -a nvim` 和 `nvim --version`；本配置会把 Homebrew 的 `bin` 放到系统目录前，重新加载 `~/.shared_rc` 或新开 shell 后应命中 0.12+。
 
 | 按键 | 操作 |
 |------|------|

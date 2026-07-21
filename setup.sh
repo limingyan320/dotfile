@@ -29,6 +29,26 @@ has_real_command() {
     esac
 }
 
+# 某些 Linux 发行版默认把 Linuxbrew 放在 /usr/bin 后面；setup 期间也应
+# 优先使用 brew 安装的软件，避免安装了新 Neovim 却继续检测到系统旧版。
+HOMEBREW_BREW="$(command -v brew 2>/dev/null || true)"
+if [ -z "$HOMEBREW_BREW" ]; then
+    for HOMEBREW_CANDIDATE in \
+        /opt/homebrew/bin/brew \
+        /home/linuxbrew/.linuxbrew/bin/brew \
+        /usr/local/bin/brew
+    do
+        if [ -x "$HOMEBREW_CANDIDATE" ]; then
+            HOMEBREW_BREW="$HOMEBREW_CANDIDATE"
+            break
+        fi
+    done
+fi
+if [ -n "$HOMEBREW_BREW" ]; then
+    eval "$("$HOMEBREW_BREW" shellenv)"
+fi
+unset HOMEBREW_BREW HOMEBREW_CANDIDATE
+
 # ============================================
 # 第一步：检测平台
 # ============================================
@@ -144,7 +164,7 @@ case "$PKG_MANAGER" in
     apt)
         info "正在更新软件包列表..."
         sudo apt update || warn "apt update 失败（可能是网络/代理问题），继续尝试安装已缓存的包"
-        # neovim 单独处理：jammy 的 apt 仓库版本是 0.6.1，本仓库插件需要 ≥0.9
+        # neovim 单独处理：live session 需要 0.12，老发行版 apt 仓库版本不足
         for pkg in tmux git xclip bash-completion ripgrep python3-tomli; do
             if dpkg -s "$pkg" &>/dev/null; then
                 warn "$pkg 已安装，跳过"
@@ -181,7 +201,7 @@ case "$PKG_MANAGER" in
         fi
         # neovim：按 CPU 架构下载 AppImage，避免 apt 仓库太旧
         NVIM_VERSION_LINE="$(nvim --version 2>/dev/null | head -1 || true)"
-        if [ -n "$NVIM_VERSION_LINE" ] && printf '%s\n' "$NVIM_VERSION_LINE" | awk '{print $2}' | grep -qE '^v?(0\.(9|[1-9][0-9])|[1-9])'; then
+        if nvim --clean --headless '+if !has("nvim-0.12") | cquit | endif' +quit >/dev/null 2>&1; then
             warn "neovim $NVIM_VERSION_LINE 已满足版本要求，跳过"
         else
             ARCH="$(dpkg --print-architecture 2>/dev/null || uname -m)"
@@ -195,7 +215,7 @@ case "$PKG_MANAGER" in
             else
                 NVIM_URL="https://github.com/neovim/neovim/releases/latest/download/nvim-linux-${NVIM_ARCH}.appimage"
                 TMP_NVIM="$(mktemp)"
-                info "正在下载 Neovim ${NVIM_ARCH} AppImage 到 ~/.local/bin/nvim（本配置需要 ≥0.9）..."
+                info "正在下载 Neovim ${NVIM_ARCH} AppImage 到 ~/.local/bin/nvim（live session 需要 ≥0.12）..."
                 mkdir -p "$HOME/.local/bin"
                 if curl -fsSL "$NVIM_URL" -o "$TMP_NVIM" && chmod +x "$TMP_NVIM" && mv "$TMP_NVIM" "$HOME/.local/bin/nvim"; then
                     info "Neovim AppImage 安装完成（确保 ~/.local/bin 在 PATH 中）"

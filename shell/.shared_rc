@@ -11,8 +11,25 @@ export DOTFILES_NVIM_TMUX_SERVER="${DOTFILES_NVIM_TMUX_SERVER:-dotfiles-nvim-hos
 export DOTFILES_NVIM_SESSION_DIR="${DOTFILES_NVIM_SESSION_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/nvim/sessions}"
 
 # --- PATH ---
-# 在这里添加跨平台通用的 PATH
-# export PATH="$HOME/.local/bin:$PATH"
+# Bazzite 等系统会把 Linuxbrew 放在 PATH 末尾，导致同名的系统包优先。
+# 统一加载 Homebrew 环境，确保 setup.sh 安装的新版本工具实际被使用。
+__dotfiles_brew_bin="$(command -v brew 2>/dev/null || true)"
+if [ -z "$__dotfiles_brew_bin" ]; then
+    for __dotfiles_brew_candidate in \
+        /opt/homebrew/bin/brew \
+        /home/linuxbrew/.linuxbrew/bin/brew \
+        /usr/local/bin/brew
+    do
+        if [ -x "$__dotfiles_brew_candidate" ]; then
+            __dotfiles_brew_bin="$__dotfiles_brew_candidate"
+            break
+        fi
+    done
+fi
+if [ -n "$__dotfiles_brew_bin" ]; then
+    eval "$("$__dotfiles_brew_bin" shellenv)"
+fi
+unset __dotfiles_brew_bin __dotfiles_brew_candidate
 
 __dotfiles_nvim_start_host() {
     command -v tmux >/dev/null 2>&1 || {
