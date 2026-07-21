@@ -10,7 +10,7 @@
 #
 # 设计原则:
 #   - 使用 Codex 原生 notify 机制，不依赖第三方插件
-#   - 只管理 notify / features.hooks / tui.notifications 和带 marker 的 hooks
+#   - 只管理 notify / features.hooks / tui.notifications / title spinner 和带 marker 的 hooks
 #   - 其余 ~/.codex/config.toml / hooks.json 配置尽量保留
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -129,6 +129,8 @@ def err(msg):
 config_path, notify_script, hooks_path, state_script = sys.argv[1:5]
 desired_notify = ["python3", notify_script]
 desired_events = ["agent-turn-complete", "approval-requested"]
+desired_tui_animations = True
+desired_terminal_title = ["spinner", "project"]
 hook_marker = "dotfiles-codex-agent-state"
 hook_command = f"python3 {shlex.quote(state_script)} hook # {hook_marker}"
 
@@ -252,6 +254,16 @@ tui_before_notifications = tui_before.get("notifications") if isinstance(tui_bef
 tui["notifications"] = desired_events
 if tui_before_notifications != desired_events:
     changes.append(f"tui.notifications ← {desired_events}")
+
+tui_before_animations = tui_before.get("animations") if isinstance(tui_before, dict) else None
+tui["animations"] = desired_tui_animations
+if tui_before_animations is not desired_tui_animations:
+    changes.append("tui.animations ← true")
+
+tui_before_terminal_title = tui_before.get("terminal_title") if isinstance(tui_before, dict) else None
+tui["terminal_title"] = desired_terminal_title
+if tui_before_terminal_title != desired_terminal_title:
+    changes.append(f"tui.terminal_title ← {desired_terminal_title}")
 
 features = cfg.get("features")
 if features is None:

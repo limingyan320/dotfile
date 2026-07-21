@@ -42,6 +42,8 @@ local session_statusline_fg = "#1a1b26"
 local session_statusline_max_width = 20
 local agent_working_frames = { "●··", "·●·", "··●", "···" }
 local agent_ready_frames = { " ! ", " · " }
+-- Stop hooks have a 5s timeout; the title fallback must not race normal ready/unread.
+local codex_terminal_idle_delay_ms = 6000
 
 local resolved_init_path = uv.fs_realpath(vim.fn.stdpath("config") .. "/init.lua")
   or (vim.fn.stdpath("config") .. "/init.lua")
@@ -93,7 +95,7 @@ local function read_codex_agent_state(address)
   return state
 end
 
-local function run_codex_agent_state(action, address, wait)
+local function run_codex_agent_state(action, address, wait, extra_args)
   address = tostring(address or vim.v.servername or "")
   if address == "" or vim.fn.executable("python3") ~= 1
     or vim.fn.filereadable(codex_agent_state_script) ~= 1
@@ -101,6 +103,7 @@ local function run_codex_agent_state(action, address, wait)
     return
   end
   local command = { "python3", codex_agent_state_script, action, "--server", address }
+  vim.list_extend(command, extra_args or {})
   if wait then
     vim.fn.system(command)
   else
@@ -114,6 +117,19 @@ end
 
 local function clear_codex_agent(address, wait)
   run_codex_agent_state("clear", address, wait)
+end
+
+local function mark_codex_agent_idle(turn_id, reason)
+  turn_id = tostring(turn_id or "")
+  if turn_id == "" then
+    return
+  end
+  run_codex_agent_state("idle", vim.v.servername, false, {
+    "--turn-id",
+    turn_id,
+    "--reason",
+    tostring(reason or "terminal-idle"),
+  })
 end
 
 function _G.dotfiles_codex_agent_state()
@@ -760,6 +776,7 @@ local function detach_nvim_session()
   vim.cmd("detach")
 end
 
+local session_dashboard
 if supports_nvim_sessions then
   local session_activity_group = vim.api.nvim_create_augroup("DotfilesNvimSessions", { clear = true })
 
@@ -833,9 +850,13 @@ if supports_nvim_sessions then
         if not current_nvim_session_is_managed() or #vim.api.nvim_list_uis() == 0 then
           return
         end
+        local sessions = discover_nvim_sessions()
+        if session_dashboard then
+          session_dashboard.cleanup_expired(sessions)
+        end
         local detached_count = 0
-        for _, session in ipairs(discover_nvim_sessions()) do
-          if session.ui_count == 0 then
+        for _, session in ipairs(sessions) do
+          if session.ui_count == 0 and not session.trashed then
             detached_count = detached_count + 1
           end
         end
@@ -857,7 +878,6 @@ if supports_nvim_sessions then
   })
 end
 
-local session_dashboard
 if supports_nvim_sessions then
   session_dashboard = require("dotfiles.session_dashboard").setup({
     session_dir = managed_nvim_session_dir,
@@ -878,6 +898,9 @@ if supports_nvim_sessions then
     rename_session = set_nvim_session_name,
     stop_session = stop_nvim_session,
     stop_current_session = stop_current_nvim_session,
+    detach_current_session = function()
+      detach_nvim_session()
+    end,
     clear_agent = function(address)
       clear_codex_agent(address, false)
     end,
@@ -1508,6 +1531,79 @@ local terminal_sessions = {
   },
 }
 
+local codex_terminal_activity = require("dotfiles.codex_terminal_activity").setup({
+  idle_delay_ms = codex_terminal_idle_delay_ms,
+  read_state = function()
+    return read_codex_agent_state(vim.v.servername)
+  end,
+  mark_idle = mark_codex_agent_idle,
+})
+
+vim.keymap.set("n", "<C-w>V", function()
+  vim.cmd("rightbelow vsplit")
+end, { desc = "Split right and focus" })
+
+vim.keymap.set("n", "<C-w>S", function()
+  vim.cmd("rightbelow split")
+end, { desc = "Split below and focus" })
+
+local function protected_terminal_window(win)
+  if not win or not vim.api.nvim_win_is_valid(win) then
+    return false
+  end
+
+  local bufnr = vim.api.nvim_win_get_buf(win)
+  if vim.bo[bufnr].buftype == "terminal" then
+    return true
+  end
+  for _, session in pairs(terminal_sessions) do
+    if session.buf == bufnr then
+      return true
+    end
+  end
+  return false
+end
+
+local function close_current_editor_window()
+  local current_win = vim.api.nvim_get_current_win()
+  if protected_terminal_window(current_win) then
+    vim.notify("Terminal/Codex 窗口不会被 <C-w>c 关闭", vim.log.levels.INFO)
+    return
+  end
+  vim.cmd("close")
+end
+
+local function keep_only_current_editor_window()
+  local current_win = vim.api.nvim_get_current_win()
+  if protected_terminal_window(current_win) or vim.api.nvim_win_get_config(current_win).relative ~= "" then
+    vim.notify("请在普通编辑窗口执行 <C-w>o", vim.log.levels.INFO)
+    return
+  end
+
+  local failures = {}
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    if win ~= current_win
+      and vim.api.nvim_win_get_config(win).relative == ""
+      and not protected_terminal_window(win)
+    then
+      local ok, err = pcall(vim.api.nvim_win_close, win, false)
+      if not ok then
+        failures[#failures + 1] = tostring(err)
+      end
+    end
+  end
+  if #failures > 0 then
+    vim.notify("部分窗口未能关闭: " .. table.concat(failures, "; "), vim.log.levels.WARN)
+  end
+end
+
+vim.keymap.set("n", "<C-w>c", close_current_editor_window, {
+  desc = "Close editor window (protect terminals)",
+})
+vim.keymap.set("n", "<C-w>o", keep_only_current_editor_window, {
+  desc = "Keep editor window (protect terminals)",
+})
+
 local function editor_target_window(win)
   if not win or not vim.api.nvim_win_is_valid(win) or win == terminal_drawer.win then
     return false
@@ -1803,6 +1899,7 @@ local function open_codex_reference(session, reference)
 end
 
 local function configure_codex_buffer(session)
+  codex_terminal_activity:attach(session.buf)
   vim.keymap.set("n", "gx", function()
     open_codex_reference(session)
   end, { buffer = session.buf, desc = "Open Codex path in editor window" })

@@ -365,6 +365,27 @@ def acknowledge(server=None):
     return state
 
 
+def mark_idle_if_working(server=None, turn_id="", reason="terminal-idle"):
+    server = normalize_server(server or os.environ.get("NVIM"))
+    turn_id = str(turn_id or "")
+    if not server or not turn_id:
+        return {}
+
+    with _state_lock(server):
+        state = read_state(server)
+        if (
+            state.get("state") != WORKING
+            or str(state.get("turn_id") or "") != turn_id
+        ):
+            return state
+        state["state"] = IDLE
+        state["unread"] = False
+        state["ended_reason"] = str(reason or "terminal-idle")
+        state["updated_at"] = time.time()
+        _write_state(state_path(server), state)
+    return state
+
+
 def clear(server=None):
     server = normalize_server(server or os.environ.get("NVIM"))
     if not server:
@@ -405,6 +426,10 @@ def main():
     for name in ("ack", "clear", "inspect"):
         command = subparsers.add_parser(name)
         command.add_argument("--server", default=os.environ.get("NVIM", ""))
+    idle = subparsers.add_parser("idle")
+    idle.add_argument("--server", default=os.environ.get("NVIM", ""))
+    idle.add_argument("--turn-id", required=True)
+    idle.add_argument("--reason", default="terminal-idle")
     args = parser.parse_args()
 
     try:
@@ -412,6 +437,8 @@ def main():
             handle_hook(_load_stdin_json())
         elif args.command == "ack":
             acknowledge(args.server)
+        elif args.command == "idle":
+            mark_idle_if_working(args.server, args.turn_id, args.reason)
         elif args.command == "clear":
             clear(args.server)
         elif args.command == "inspect":

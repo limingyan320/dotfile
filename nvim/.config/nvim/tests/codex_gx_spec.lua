@@ -29,6 +29,28 @@ vim.fn.jobwait({ job_id }, 1000)
 vim.bo[codex_buf].modifiable = true
 vim.cmd.lcd(fake_bin)
 
+local close_window = vim.fn.maparg("<C-W>c", "n", false, true)
+local only_window = vim.fn.maparg("<C-W>o", "n", false, true)
+assert(type(close_window.callback) == "function", "protected close mapping is missing in Codex")
+assert(type(only_window.callback) == "function", "protected only mapping is missing in Codex")
+
+vim.api.nvim_set_current_win(editor_win)
+vim.cmd("vsplit")
+local extra_editor_win = vim.api.nvim_get_current_win()
+vim.api.nvim_set_current_win(editor_win)
+only_window.callback()
+assert(not vim.api.nvim_win_is_valid(extra_editor_win), "editor <C-w>o should close another editor")
+assert(vim.api.nvim_win_is_valid(drawer_win), "editor <C-w>o should preserve the Codex drawer")
+
+local original_notify = vim.notify
+vim.notify = function() end
+vim.api.nvim_set_current_win(drawer_win)
+close_window.callback()
+only_window.callback()
+vim.notify = original_notify
+assert(vim.api.nvim_win_is_valid(drawer_win), "Codex close/only mappings should preserve its window")
+assert(vim.api.nvim_win_is_valid(editor_win), "Codex <C-w>o should preserve editor windows")
+
 local function follow(reference, cursor_col, expected_path, expected_line, expected_column)
   vim.api.nvim_set_current_win(drawer_win)
   vim.api.nvim_buf_set_lines(codex_buf, 0, -1, false, { reference })
@@ -86,10 +108,10 @@ local function visual_follow(text, reference, expected_path, expected_line, expe
   assert_equal(vim.api.nvim_win_get_buf(drawer_win), codex_buf, "visual gx should leave Codex open")
 end
 
-follow("docs/nvim-tmux-cheatsheet.md:175:3", 8, "docs/nvim-tmux-cheatsheet.md", 175, 3)
-follow("docs/nvim-tmux-cheatsheet.md:175:3。", 8, "docs/nvim-tmux-cheatsheet.md", 175, 3)
-local inline_context = "rules docs/nvim-tmux-cheatsheet.md:175，PDF text follows"
-follow(inline_context, 12, "docs/nvim-tmux-cheatsheet.md", 175, 1)
+follow("docs/nvim-tmux-cheatsheet.md:1:3", 8, "docs/nvim-tmux-cheatsheet.md", 1, 3)
+follow("docs/nvim-tmux-cheatsheet.md:1:3。", 8, "docs/nvim-tmux-cheatsheet.md", 1, 3)
+local inline_context = "rules docs/nvim-tmux-cheatsheet.md:1，PDF text follows"
+follow(inline_context, 12, "docs/nvim-tmux-cheatsheet.md", 1, 1)
 reject(inline_context, assert(inline_context:find("PDF", 1, true)) - 1)
 follow(
   "[config](nvim/.config/nvim/init.lua:20:2)",
@@ -100,10 +122,10 @@ follow(
 )
 follow("nvim/.config/nvim/init.lua#L30C4", 32, "nvim/.config/nvim/init.lua", 30, 4)
 visual_follow(
-  "open docs/nvim-tmux-cheatsheet.md:175:3 please",
-  "docs/nvim-tmux-cheatsheet.md:175:3",
+  "open docs/nvim-tmux-cheatsheet.md:1:3 please",
+  "docs/nvim-tmux-cheatsheet.md:1:3",
   "docs/nvim-tmux-cheatsheet.md",
-  175,
+  1,
   3
 )
 

@@ -110,6 +110,31 @@ class AgentStateTest(unittest.TestCase):
         self.assertEqual(state["state"], agent_state.IDLE)
         self.assertEqual(state["seen_turn_id"], "turn-1")
 
+    def test_terminal_idle_only_clears_matching_working_turn(self):
+        agent_state.record_working(self.hook_payload("UserPromptSubmit", "turn-1"))
+        state = agent_state.mark_idle_if_working(
+            self.server, "turn-1", "terminal-title-idle"
+        )
+        self.assertEqual(state["state"], agent_state.IDLE)
+        self.assertFalse(state["unread"])
+        self.assertEqual(state["ended_reason"], "terminal-title-idle")
+
+    def test_terminal_idle_does_not_clear_newer_or_ready_turn(self):
+        agent_state.record_working(self.hook_payload("UserPromptSubmit", "turn-1"))
+        agent_state.record_working(self.hook_payload("UserPromptSubmit", "turn-2"))
+        agent_state.mark_idle_if_working(self.server, "turn-1")
+        state = agent_state.read_state(self.server)
+        self.assertEqual(state["state"], agent_state.WORKING)
+        self.assertEqual(state["turn_id"], "turn-2")
+
+        agent_state.record_completion(
+            self.hook_payload("Stop", "turn-2"), observed=False
+        )
+        agent_state.mark_idle_if_working(self.server, "turn-2")
+        state = agent_state.read_state(self.server)
+        self.assertEqual(state["state"], agent_state.READY)
+        self.assertTrue(state["unread"])
+
 
 if __name__ == "__main__":
     unittest.main()

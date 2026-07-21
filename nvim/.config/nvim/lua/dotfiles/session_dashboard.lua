@@ -7,6 +7,10 @@ local store
 local active_dashboard
 local note_states = {}
 local dashboard_namespace = vim.api.nvim_create_namespace("dotfiles_session_dashboard")
+local DAY_SECONDS = 24 * 60 * 60
+local DEFAULT_SESSION_TRASH_TTL = 7 * DAY_SECONDS
+local DEFAULT_TAG_TRASH_TTL = 30 * DAY_SECONDS
+local automatic_session_purges = {}
 
 local function path_join(...)
   return vim.fs.joinpath(...)
@@ -181,6 +185,11 @@ function Store:entries_path(session_or_id)
   return directory and path_join(directory, "entries") or nil
 end
 
+function Store:trash_path(session_or_id)
+  local directory = self:session_path(session_or_id)
+  return directory and path_join(directory, "trash") or nil
+end
+
 function Store:load_metadata(session_or_id)
   local path = self:metadata_path(session_or_id)
   return path and read_json(path) or nil
@@ -217,8 +226,37 @@ function Store:update_session(session)
     address = trim(session.address),
     created_at = tonumber(previous.created_at) or now,
     updated_at = now,
+    trashed_at = tonumber(previous.trashed_at),
   }
   return write_json_atomic(self:metadata_path(session_id), metadata)
+end
+
+function Store:trash_session(session)
+  local ok, err = self:update_session(session)
+  if not ok then
+    return false, err
+  end
+
+  local metadata = self:load_metadata(session) or {}
+  metadata.trashed_at = os.time()
+  metadata.updated_at = metadata.trashed_at
+  return write_json_atomic(self:metadata_path(session), metadata)
+end
+
+function Store:restore_session(session)
+  local metadata = self:load_metadata(session)
+  if not metadata then
+    return false, "session recycle metadata no longer exists"
+  end
+
+  metadata.trashed_at = nil
+  metadata.updated_at = os.time()
+  return write_json_atomic(self:metadata_path(session), metadata)
+end
+
+function Store:session_trashed_at(session_or_id)
+  local metadata = self:load_metadata(session_or_id)
+  return metadata and tonumber(metadata.trashed_at) or nil
 end
 
 function Store:create_entry(session)
@@ -251,6 +289,24 @@ function Store:create_entry(session)
   }
 end
 
+local function entry_preview(path)
+  local handle = io.open(path, "r")
+  if not handle then
+    return ""
+  end
+
+  local preview = ""
+  for raw_line in handle:lines() do
+    local line = trim(raw_line)
+    if line ~= "" then
+      preview = line
+      break
+    end
+  end
+  handle:close()
+  return preview
+end
+
 function Store:list_entries(session_or_id)
   local directory = self:entries_path(session_or_id)
   local scan = directory and uv.fs_scandir(directory) or nil
@@ -268,24 +324,12 @@ function Store:list_entries(session_or_id)
     if file_type == "file" and created_at and suffix then
       local path = path_join(directory, filename)
       local stat = uv.fs_stat(path)
-      local preview = ""
-      local handle = io.open(path, "r")
-      if handle then
-        for raw_line in handle:lines() do
-          local line = trim(raw_line)
-          if line ~= "" then
-            preview = line
-            break
-          end
-        end
-        handle:close()
-      end
       entries[#entries + 1] = {
         id = created_at .. "-" .. suffix,
         path = path,
         created_at = tonumber(created_at),
         updated_at = stat and stat_seconds(stat.mtime) or tonumber(created_at),
-        preview = preview,
+        preview = entry_preview(path),
       }
     end
   end
@@ -295,6 +339,45 @@ function Store:list_entries(session_or_id)
       return a.created_at > b.created_at
     end
     return a.id > b.id
+  end)
+  return entries
+end
+
+function Store:list_deleted_entries(session_or_id)
+  local directory = self:trash_path(session_or_id)
+  local scan = directory and uv.fs_scandir(directory) or nil
+  if not scan then
+    return {}
+  end
+
+  local entries = {}
+  while true do
+    local filename, file_type = uv.fs_scandir_next(scan)
+    if not filename then
+      break
+    end
+    local created_at, suffix, deleted_at = filename:match("^(%d+)%-(%d+)%.md%.deleted%-(%d+)$")
+    if file_type == "file" and created_at and suffix and deleted_at then
+      local path = path_join(directory, filename)
+      local stat = uv.fs_stat(path)
+      entries[#entries + 1] = {
+        id = created_at .. "-" .. suffix,
+        trash_id = filename,
+        path = path,
+        created_at = tonumber(created_at),
+        deleted_at = tonumber(deleted_at),
+        updated_at = stat and stat_seconds(stat.mtime) or tonumber(deleted_at),
+        preview = entry_preview(path),
+        trashed = true,
+      }
+    end
+  end
+
+  table.sort(entries, function(a, b)
+    if a.deleted_at ~= b.deleted_at then
+      return a.deleted_at > b.deleted_at
+    end
+    return a.trash_id > b.trash_id
   end)
   return entries
 end
@@ -319,6 +402,121 @@ function Store:delete_entry(entry)
   return true
 end
 
+function Store:restore_entry(entry)
+  if not entry or not entry.trashed or not entry.path or not uv.fs_stat(entry.path) then
+    return nil, "trashed progress entry no longer exists"
+  end
+
+  local session_directory = vim.fn.fnamemodify(vim.fn.fnamemodify(entry.path, ":h"), ":h")
+  local entries = path_join(session_directory, "entries")
+  local ok, err = ensure_directory(entries)
+  if not ok then
+    return nil, err
+  end
+
+  local entry_id = entry.id
+  local target = path_join(entries, entry_id .. ".md")
+  local suffix = math.floor(uv.hrtime() % 1000000)
+  while uv.fs_stat(target) do
+    entry_id = ("%d-%06d"):format(entry.created_at, suffix)
+    target = path_join(entries, entry_id .. ".md")
+    suffix = (suffix + 1) % 1000000
+  end
+
+  local renamed, rename_err = uv.fs_rename(entry.path, target)
+  if not renamed then
+    return nil, tostring(rename_err or "cannot restore entry from trash")
+  end
+  return entry_id
+end
+
+function Store:delete_entry_permanently(entry)
+  if not entry or not entry.trashed or not entry.path or not uv.fs_stat(entry.path) then
+    return false, "trashed progress entry no longer exists"
+  end
+  local unlinked, unlink_err = uv.fs_unlink(entry.path)
+  if not unlinked then
+    return false, tostring(unlink_err or "cannot permanently delete entry")
+  end
+  return true
+end
+
+function Store:delete_session_record(session_or_id)
+  local session_id = type(session_or_id) == "table" and self:session_id(session_or_id) or trim(session_or_id)
+  if not session_id or session_id == "" or session_id:find("[^%w._-]") then
+    return false, "invalid session record identifier"
+  end
+
+  local directory = self:session_path(session_id)
+  if not directory or vim.fs.normalize(vim.fn.fnamemodify(directory, ":h")) ~= self.root then
+    return false, "session record is outside the notes directory"
+  end
+  if not uv.fs_stat(directory) then
+    return true
+  end
+
+  local call_ok, remove_result, remove_err = pcall(vim.fs.rm, directory, { recursive = true, force = false })
+  if not call_ok then
+    return false, tostring(remove_result)
+  end
+  if remove_result == false or uv.fs_stat(directory) then
+    return false, tostring(remove_err or "cannot remove session record")
+  end
+  return true
+end
+
+function Store:delete_empty_session_record(session_or_id)
+  if #self:list_entries(session_or_id) > 0 or #self:list_deleted_entries(session_or_id) > 0 then
+    return true
+  end
+  return self:delete_session_record(session_or_id)
+end
+
+function Store:purge_expired_deleted_entries(now, ttl)
+  now = tonumber(now) or os.time()
+  ttl = tonumber(ttl) or DEFAULT_TAG_TRASH_TTL
+  if ttl <= 0 then
+    return 0, {}
+  end
+
+  local root_scan = uv.fs_scandir(self.root)
+  if not root_scan then
+    return 0, {}
+  end
+
+  local purged = 0
+  local errors = {}
+  while true do
+    local session_id, file_type = uv.fs_scandir_next(root_scan)
+    if not session_id then
+      break
+    end
+    if file_type == "directory" then
+      local trash = self:trash_path(session_id)
+      local trash_scan = trash and uv.fs_scandir(trash) or nil
+      if trash_scan then
+        while true do
+          local filename, trash_type = uv.fs_scandir_next(trash_scan)
+          if not filename then
+            break
+          end
+          local deleted_at = filename:match("^%d+%-%d+%.md%.deleted%-(%d+)$")
+          if trash_type == "file" and deleted_at and now - tonumber(deleted_at) >= ttl then
+            local path = path_join(trash, filename)
+            local unlinked, unlink_err = uv.fs_unlink(path)
+            if unlinked then
+              purged = purged + 1
+            else
+              errors[#errors + 1] = tostring(unlink_err or "cannot purge " .. path)
+            end
+          end
+        end
+      end
+    end
+  end
+  return purged, errors
+end
+
 function Store:list_archives(live_ids)
   local scan = uv.fs_scandir(self.root)
   if not scan then
@@ -334,7 +532,8 @@ function Store:list_archives(live_ids)
     if file_type == "directory" and not live_ids[session_id] then
       local metadata = self:load_metadata(session_id)
       local entries = self:list_entries(session_id)
-      if metadata and #entries > 0 then
+      local deleted_entries = self:list_deleted_entries(session_id)
+      if metadata and (#entries > 0 or #deleted_entries > 0) then
         archives[#archives + 1] = {
           session_id = session_id,
           archived = true,
@@ -349,9 +548,14 @@ function Store:list_archives(live_ids)
           terminal_count = 0,
           window_count = 0,
           tab_count = 0,
-          last_active = math.max(entries[1].updated_at, tonumber(metadata.updated_at) or 0),
+          last_active = math.max(
+            entries[1] and entries[1].updated_at or 0,
+            deleted_entries[1] and deleted_entries[1].updated_at or 0,
+            tonumber(metadata.updated_at) or 0
+          ),
           agent_state = { state = "idle", unread = false },
           notes = entries,
+          deleted_notes = deleted_entries,
         }
       end
     end
@@ -371,6 +575,92 @@ local function note_summary(entries)
   return { count = #(entries or {}), updated_at = updated_at }
 end
 
+local function session_trash_ttl()
+  return tonumber(config.session_trash_ttl) or DEFAULT_SESSION_TRASH_TTL
+end
+
+local function tag_trash_ttl()
+  return tonumber(config.tag_trash_ttl) or DEFAULT_TAG_TRASH_TTL
+end
+
+local function read_session_agent_state(session)
+  local ok, agent = pcall(config.read_agent_state, session.address)
+  if ok and type(agent) == "table" then
+    return agent
+  end
+  return type(session.agent_state) == "table" and session.agent_state or { state = "idle", unread = false }
+end
+
+local function hydrate_session_retention(session, now)
+  session.trashed_at = store:session_trashed_at(session.session_id or session)
+  session.trashed = session.trashed_at ~= nil
+  if not session.trashed then
+    return
+  end
+
+  session.agent_state = read_session_agent_state(session)
+  session.expiry_paused = (tonumber(session.ui_count) or 0) > 0 or session.agent_state.state == "working"
+  local ttl = session_trash_ttl()
+  if ttl > 0 then
+    session.expires_at = session.trashed_at + ttl
+    session.expiry_remaining = session.expires_at - (now or os.time())
+  end
+end
+
+local function should_automatically_purge_session(session)
+  return session.trashed
+    and session.expires_at
+    and session.expiry_remaining <= 0
+    and not session.expiry_paused
+    and not session.current
+end
+
+local function start_automatic_session_purge(session, on_complete)
+  local session_id = session.session_id or store:session_id(session)
+  if not session_id or automatic_session_purges[session_id] then
+    return false
+  end
+  automatic_session_purges[session_id] = true
+
+  local function finish(stopped, err)
+    vim.schedule(function()
+      automatic_session_purges[session_id] = nil
+      if stopped then
+        config.clear_agent(session.address)
+        local cleaned, clean_err = store:delete_empty_session_record(session_id)
+        if not cleaned then
+          vim.notify("清理空 Session 记录失败: " .. tostring(clean_err), vim.log.levels.WARN)
+        end
+        vim.notify(("Expired Nvim session %q was removed; tags remain in Past Notes"):format(display_name(session)))
+      else
+        vim.notify("自动清理过期 Nvim session 失败: " .. tostring(err), vim.log.levels.ERROR)
+      end
+      if on_complete then
+        on_complete(stopped)
+      end
+    end)
+  end
+
+  local call_ok, call_err = pcall(config.stop_session, session, finish)
+  if not call_ok then
+    automatic_session_purges[session_id] = nil
+    vim.notify("自动清理过期 Nvim session 失败: " .. tostring(call_err), vim.log.levels.ERROR)
+    return false
+  end
+  return true
+end
+
+local function purge_expired_tag_trash()
+  local purged, errors = store:purge_expired_deleted_entries(os.time(), tag_trash_ttl())
+  if purged > 0 then
+    vim.notify(("Purged %d expired Tag Trash item(s)"):format(purged))
+  end
+  if #errors > 0 then
+    vim.notify("清理 Tag Trash 失败: " .. table.concat(errors, "; "), vim.log.levels.WARN)
+  end
+  return purged
+end
+
 local function dashboard_valid(state)
   return state and vim.api.nvim_buf_is_valid(state.bufnr) and state.winid and vim.api.nvim_win_is_valid(state.winid)
 end
@@ -388,12 +678,16 @@ local function refresh_note_data(state, session_id)
   for _, session in ipairs(state.sessions or {}) do
     if not session_id or session.session_id == session_id then
       session.notes = store:list_entries(session.session_id)
+      session.deleted_notes = store:list_deleted_entries(session.session_id)
       session.note_summary = note_summary(session.notes)
     end
   end
 end
 
+local render_dashboard
+
 local function load_sessions(state)
+  purge_expired_tag_trash()
   local ok, sessions = pcall(config.discover_sessions)
   if not ok or type(sessions) ~= "table" then
     vim.notify("读取 Nvim sessions 失败: " .. tostring(sessions), vim.log.levels.ERROR)
@@ -401,6 +695,9 @@ local function load_sessions(state)
   end
 
   local live_ids = {}
+  local active_sessions = {}
+  local trashed_sessions = {}
+  local now = os.time()
   for _, session in ipairs(sessions) do
     if session.current then
       if state.current_buffer_snapshot then
@@ -413,13 +710,34 @@ local function load_sessions(state)
     if session.session_id then
       live_ids[session.session_id] = true
       session.notes = store:list_entries(session.session_id)
+      session.deleted_notes = store:list_deleted_entries(session.session_id)
       session.note_summary = note_summary(session.notes)
+      hydrate_session_retention(session, now)
+      if should_automatically_purge_session(session) then
+        session.purging = start_automatic_session_purge(session, function()
+          if dashboard_valid(state) then
+            load_sessions(state)
+            render_dashboard(state)
+          end
+        end) or automatic_session_purges[session.session_id] == true
+      end
     else
       session.notes = {}
+      session.deleted_notes = {}
       session.note_summary = note_summary({})
+    end
+    if session.trashed then
+      trashed_sessions[#trashed_sessions + 1] = session
+    else
+      active_sessions[#active_sessions + 1] = session
     end
   end
 
+  sessions = active_sessions
+  state.trashed_session_count = #trashed_sessions
+  if state.show_session_trash then
+    vim.list_extend(sessions, trashed_sessions)
+  end
   if state.show_archives then
     vim.list_extend(sessions, store:list_archives(live_ids))
   end
@@ -479,13 +797,32 @@ end
 
 local function session_status(session)
   if session.archived then
-    return "ARCHIVED", "Comment"
+    return "ENDED", "Comment"
+  elseif session.trashed then
+    return "TRASHED", "DiagnosticError"
   elseif session.current then
     return "CURRENT", "DiagnosticOk"
   elseif session.ui_count == 0 then
     return "DETACHED", "DiagnosticWarn"
   end
   return "ATTACHED", "DiagnosticInfo"
+end
+
+local function session_expiry_detail(session)
+  if session.purging then
+    return "purging"
+  elseif session.expiry_paused then
+    return "expiry paused"
+  elseif not session.expiry_remaining then
+    return "no expiry"
+  elseif session.expiry_remaining <= 0 then
+    return "expired"
+  elseif session.expiry_remaining < 3600 then
+    return ("expires %dm"):format(math.max(1, math.ceil(session.expiry_remaining / 60)))
+  elseif session.expiry_remaining < DAY_SECONDS then
+    return ("expires %dh"):format(math.ceil(session.expiry_remaining / 3600))
+  end
+  return ("expires %dd"):format(math.ceil(session.expiry_remaining / DAY_SECONDS))
 end
 
 local function agent_indicator(state, session)
@@ -502,7 +839,7 @@ local function agent_indicator(state, session)
   return "   ", "Comment"
 end
 
-local function render_dashboard(state, preferred_key)
+render_dashboard = function(state, preferred_key)
   if not dashboard_valid(state) then
     return
   end
@@ -512,7 +849,7 @@ local function render_dashboard(state, preferred_key)
   local output = { lines = {}, highlights = {}, line_map = {} }
   local live_count = 0
   for _, session in ipairs(state.sessions) do
-    if not session.archived then
+    if not session.archived and not session.trashed then
       live_count = live_count + 1
     end
   end
@@ -521,12 +858,23 @@ local function render_dashboard(state, preferred_key)
     { " Live Sessions", "Title" },
     { ("  %d active"):format(live_count), "Comment" },
   })
+  if live_count == 0 then
+    append_render_line(output, { { "   No live sessions", "Comment" } })
+  end
 
+  local trash_heading_rendered = false
   local archived_heading_rendered = false
   for _, session in ipairs(state.sessions) do
-    if session.archived and not archived_heading_rendered then
+    if session.trashed and not trash_heading_rendered then
       append_render_line(output, { { "", nil } })
-      append_render_line(output, { { " Archived Sessions", "Title" } })
+      append_render_line(output, {
+        { " Recycle Bin", "Title" },
+        { ("  %d recoverable"):format(state.trashed_session_count or 0), "Comment" },
+      })
+      trash_heading_rendered = true
+    elseif session.archived and not archived_heading_rendered then
+      append_render_line(output, { { "", nil } })
+      append_render_line(output, { { " Past Session Notes", "Title" } })
       archived_heading_rendered = true
     end
 
@@ -543,8 +891,13 @@ local function render_dashboard(state, preferred_key)
       note_text = "◇ 0"
       note_highlight = "Comment"
     end
+    if session.trashed and width < 95 then
+      note_text = session_expiry_detail(session)
+      note_highlight = session.expiry_paused and "DiagnosticWarn" or "DiagnosticInfo"
+    end
 
-    local details = session.archived and "saved progress"
+    local details = session.archived and "saved notes"
+      or session.trashed and session_expiry_detail(session)
       or ("%dw %dt %d* %dterm"):format(
         session.window_count,
         session.tab_count,
@@ -590,18 +943,20 @@ local function render_dashboard(state, preferred_key)
     end
     append_render_line(output, spans, item)
 
-    local show_entries = session_id == state.focused_session_id and (#(session.notes or {}) > 0 or state.mode == "tags")
+    local entries = state.mode == "tags" and state.show_tag_trash and (session.deleted_notes or {})
+      or (session.notes or {})
+    local show_entries = session_id == state.focused_session_id and (#entries > 0 or state.mode == "tags")
     if show_entries then
-      local entries = session.notes or {}
       if #entries == 0 then
         append_render_line(output, {
-          { "      No progress entries", "Comment" },
+          { state.show_tag_trash and "      Tag trash is empty" or "      No progress entries", "Comment" },
         })
       else
         local groups = {}
         local order = {}
         for _, entry in ipairs(entries) do
-          local label = day_label(entry.created_at)
+          local timestamp = entry.trashed and entry.deleted_at or entry.created_at
+          local label = day_label(timestamp)
           if not groups[label] then
             groups[label] = {}
             order[#order + 1] = label
@@ -616,7 +971,8 @@ local function render_dashboard(state, preferred_key)
           for index, entry in ipairs(groups[label]) do
             local branch = index == #groups[label] and "└" or "├"
             local preview = entry.preview ~= "" and entry.preview or "(empty note)"
-            local prefix = ("      %s %s  "):format(branch, os.date("%H:%M", entry.created_at))
+            local timestamp = entry.trashed and entry.deleted_at or entry.created_at
+            local prefix = ("      %s %s  "):format(branch, os.date("%H:%M", timestamp))
             append_render_line(output, {
               { prefix, "Comment" },
               {
@@ -625,7 +981,7 @@ local function render_dashboard(state, preferred_key)
               },
             }, {
               kind = "entry",
-              key = "entry:" .. entry.id,
+              key = entry.trashed and "trash-entry:" .. entry.trash_id or "entry:" .. entry.id,
               session = session,
               session_id = session_id,
               entry = entry,
@@ -636,12 +992,15 @@ local function render_dashboard(state, preferred_key)
     end
   end
 
-  if #state.sessions == 0 then
-    append_render_line(output, { { "   No live sessions", "Comment" } })
-  elseif state.show_archives and not archived_heading_rendered then
+  if state.show_session_trash and not trash_heading_rendered then
     append_render_line(output, { { "", nil } })
-    append_render_line(output, { { " Archived Sessions", "Title" } })
-    append_render_line(output, { { "   No archived progress", "Comment" } })
+    append_render_line(output, { { " Recycle Bin", "Title" } })
+    append_render_line(output, { { "   Recycle bin is empty", "Comment" } })
+  end
+  if state.show_archives and not archived_heading_rendered then
+    append_render_line(output, { { "", nil } })
+    append_render_line(output, { { " Past Session Notes", "Title" } })
+    append_render_line(output, { { "   No past notes", "Comment" } })
   end
 
   vim.bo[state.bufnr].modifiable = true
@@ -666,9 +1025,10 @@ local function render_dashboard(state, preferred_key)
   if state.mode == "tags" then
     local focused = session_by_id(state, state.focused_session_id)
     if focused then
-      title = (" Session Tags · %s "):format(display_name(focused))
+      title = state.show_tag_trash and (" Tag Trash · %s "):format(display_name(focused))
+        or (" Session Tags · %s "):format(display_name(focused))
     else
-      title = " Session Tags "
+      title = state.show_tag_trash and " Tag Trash " or " Session Tags "
     end
   end
   pcall(vim.api.nvim_win_set_config, state.winid, {
@@ -962,6 +1322,10 @@ local function add_entry(state)
   if not session then
     return
   end
+  if state.show_tag_trash then
+    vim.notify("先按 T 离开 Tag 回收站再新建", vim.log.levels.INFO)
+    return
+  end
   local entry, err = store:create_entry(session)
   if not entry then
     vim.notify("创建 session 进度失败: " .. tostring(err), vim.log.levels.ERROR)
@@ -980,6 +1344,10 @@ local function edit_entry(state, enter_insert)
     return
   end
   if item and item.kind == "entry" then
+    if item.entry.trashed then
+      vim.notify("回收站里的 tag 需先按 u 恢复", vim.log.levels.INFO)
+      return
+    end
     open_note_editor(state, session, item.entry, enter_insert)
   elseif session.notes and session.notes[1] then
     render_dashboard(state, "entry:" .. session.notes[1].id)
@@ -997,35 +1365,67 @@ local function delete_entry(state)
   end
   local entry = item.entry
   local preview = entry.preview ~= "" and entry.preview or "empty note"
-  vim.ui.select({ "Cancel", "Delete - move entry to trash" }, {
-    prompt = ("Delete progress %q?"):format(truncate_display(preview, 50)),
-    kind = "dotfiles_nvim_session_note_delete",
+  local delete_label = entry.trashed and "Permanently delete tag" or "Delete - move entry to trash"
+  vim.ui.select({ "Cancel", delete_label }, {
+    prompt = entry.trashed and ("Permanently delete tag %q? This cannot be undone."):format(
+      truncate_display(preview, 50)
+    ) or ("Delete progress %q?"):format(truncate_display(preview, 50)),
+    kind = entry.trashed and "dotfiles_nvim_session_note_purge" or "dotfiles_nvim_session_note_delete",
   }, function(choice)
-    if choice ~= "Delete - move entry to trash" then
+    if choice ~= delete_label then
       return
     end
     if state.note and state.note.entry.path == entry.path and not close_note_editor(state) then
       return
     end
-    local ok, err = store:delete_entry(entry)
+    local ok, err
+    if entry.trashed then
+      ok, err = store:delete_entry_permanently(entry)
+    else
+      ok, err = store:delete_entry(entry)
+    end
     if not ok then
-      vim.notify("删除 session 进度失败: " .. tostring(err), vim.log.levels.ERROR)
+      vim.notify("删除 session tag 失败: " .. tostring(err), vim.log.levels.ERROR)
       return
     end
     store:update_session(item.session)
     local deleted_index = 1
-    for index, candidate in ipairs(item.session.notes or {}) do
+    local candidates = entry.trashed and (item.session.deleted_notes or {}) or (item.session.notes or {})
+    for index, candidate in ipairs(candidates) do
       if candidate.id == entry.id then
         deleted_index = index
         break
       end
     end
     refresh_note_data(state, item.session_id)
-    local remaining = item.session.notes or {}
+    local remaining = entry.trashed and (item.session.deleted_notes or {}) or (item.session.notes or {})
     local next_entry = remaining[deleted_index] or remaining[deleted_index - 1]
-    local key = next_entry and "entry:" .. next_entry.id or "session:" .. item.session_id
+    local key = next_entry
+        and (next_entry.trashed and "trash-entry:" .. next_entry.trash_id or "entry:" .. next_entry.id)
+      or "session:" .. item.session_id
     render_dashboard(state, key)
   end)
+end
+
+local function restore_entry(state)
+  local _, item = context_session(state)
+  if not item or item.kind ~= "entry" or not item.entry.trashed then
+    vim.notify("请先在 Tag 回收站中选择一条记录", vim.log.levels.WARN)
+    return
+  end
+
+  local restored_id, err = store:restore_entry(item.entry)
+  if not restored_id then
+    vim.notify("恢复 session tag 失败: " .. tostring(err), vim.log.levels.ERROR)
+    return
+  end
+  store:update_session(item.session)
+  refresh_note_data(state, item.session_id)
+  local remaining = item.session.deleted_notes or {}
+  local next_entry = remaining[1]
+  local key = next_entry and "trash-entry:" .. next_entry.trash_id or "session:" .. item.session_id
+  render_dashboard(state, key)
+  vim.notify(("Restored tag %q"):format(truncate_display(item.entry.preview, 50)))
 end
 
 local function enter_tag_mode(state)
@@ -1034,6 +1434,7 @@ local function enter_tag_mode(state)
     return
   end
   state.mode = "tags"
+  state.show_tag_trash = false
   state.focused_session_id = session.session_id
   local item = selected_item(state)
   local key = item and item.kind == "entry" and item.key
@@ -1044,6 +1445,7 @@ end
 
 local function leave_tag_mode(state)
   state.mode = "sessions"
+  state.show_tag_trash = false
   render_dashboard(state, "session:" .. tostring(state.focused_session_id or ""))
 end
 
@@ -1064,6 +1466,8 @@ local function select_context(state)
     edit_entry(state, false)
   elseif session.archived then
     enter_tag_mode(state)
+  elseif session.trashed then
+    vim.notify("该 session 在回收站中；按 u 恢复后再连接", vim.log.levels.INFO)
   elseif session.current then
     close_dashboard(state)
   else
@@ -1079,7 +1483,10 @@ local function rename_session(state)
   if not session then
     return
   elseif session.archived then
-    vim.notify("归档日志不能重命名 live session", vim.log.levels.WARN)
+    vim.notify("Past Session Notes 不能重命名已结束的 live session", vim.log.levels.WARN)
+    return
+  elseif session.trashed then
+    vim.notify("请先按 u 恢复回收站里的 session", vim.log.levels.WARN)
     return
   end
   vim.ui.input({ prompt = "Rename Nvim session:", default = session.name }, function(input)
@@ -1128,15 +1535,37 @@ local function create_session(state)
   end)
 end
 
-local function delete_session(state)
-  local session = context_session(state)
-  if not session then
-    return
-  elseif session.archived then
-    vim.notify("归档日志不会随 live session 删除", vim.log.levels.WARN)
-    return
-  end
+local function delete_past_notes(state, session)
+  local active_count = #(session.notes or {})
+  local deleted_count = #(session.deleted_notes or {})
+  local total_count = active_count + deleted_count
+  local delete_label = ("Permanently delete %d saved tag(s)"):format(total_count)
+  vim.ui.select({ "Cancel", delete_label }, {
+    prompt = ("Delete all Past Session Notes for %q? Metadata and Tag Trash will also be removed."):format(
+      display_name(session)
+    ),
+    kind = "dotfiles_nvim_session_past_notes_delete",
+  }, function(choice)
+    if choice ~= delete_label then
+      return
+    end
+    if not close_note_editor(state) then
+      return
+    end
+    local deleted, err = store:delete_session_record(session.session_id)
+    if not deleted then
+      vim.notify("删除 Past Session Notes 失败: " .. tostring(err), vim.log.levels.ERROR)
+      return
+    end
+    vim.notify(("Deleted Past Session Notes for %q"):format(display_name(session)))
+    if dashboard_valid(state) then
+      load_sessions(state)
+      render_dashboard(state)
+    end
+  end)
+end
 
+local function permanently_delete_session(state, session)
   local risks = {}
   if session.modified_count > 0 then
     risks[#risks + 1] = ("%d modified buffer(s)"):format(session.modified_count)
@@ -1147,29 +1576,23 @@ local function delete_session(state)
   if session.ui_count > 0 then
     risks[#risks + 1] = ("%d attached UI(s)"):format(session.ui_count)
   end
-  local delete_label
-  if session.current then
-    delete_label = "Delete current - force close and return to shell"
-  else
-    delete_label = "Delete - force close this session"
-  end
-  if session.current and #risks > 0 then
-    delete_label = "Delete current - return to shell; closes " .. table.concat(risks, ", ")
-  elseif #risks > 0 then
-    delete_label = "Delete - closes " .. table.concat(risks, ", ")
+  local delete_label = session.current and "Permanently delete current session" or "Permanently delete session"
+  if #risks > 0 then
+    delete_label = delete_label .. " - closes " .. table.concat(risks, ", ")
   end
 
   vim.ui.select({ "Cancel", delete_label }, {
-    prompt = session.current and ("Delete CURRENT session %q? Progress notes stay archived."):format(
+    prompt = ("Permanently delete session %q? Live windows and terminals cannot be restored; tags remain in Past Notes."):format(
       display_name(session)
-    ) or ("Delete session %q?"):format(display_name(session)),
-    kind = "dotfiles_nvim_session_delete",
+    ),
+    kind = "dotfiles_nvim_session_purge",
   }, function(choice)
     if choice ~= delete_label then
       return
     end
     if session.current then
       if close_dashboard(state) then
+        store:delete_empty_session_record(session.session_id)
         config.stop_current_session(session)
       end
       return
@@ -1177,9 +1600,13 @@ local function delete_session(state)
     config.stop_session(session, function(stopped, err)
       if stopped then
         config.clear_agent(session.address)
-        vim.notify(("Deleted Nvim session %q; progress was archived"):format(display_name(session)))
+        local cleaned, clean_err = store:delete_empty_session_record(session.session_id)
+        if not cleaned then
+          vim.notify("清理空 Session 记录失败: " .. tostring(clean_err), vim.log.levels.WARN)
+        end
+        vim.notify(("Permanently deleted Nvim session %q; tags were saved to Past Notes"):format(display_name(session)))
       else
-        vim.notify("删除 Nvim session 失败: " .. tostring(err), vim.log.levels.ERROR)
+        vim.notify("永久删除 Nvim session 失败: " .. tostring(err), vim.log.levels.ERROR)
       end
       if dashboard_valid(state) then
         load_sessions(state)
@@ -1189,19 +1616,110 @@ local function delete_session(state)
   end)
 end
 
+local function delete_session(state)
+  local session = context_session(state)
+  if not session then
+    return
+  elseif session.archived then
+    delete_past_notes(state, session)
+    return
+  end
+  if session.trashed then
+    permanently_delete_session(state, session)
+    return
+  end
+
+  local ok, err = store:trash_session(session)
+  if not ok then
+    vim.notify("移动 Nvim session 到回收站失败: " .. tostring(err), vim.log.levels.ERROR)
+    return
+  end
+  if session.current then
+    if not close_dashboard(state) then
+      store:restore_session(session)
+      return
+    end
+    vim.notify(
+      ("Moved Nvim session %q to Recycle Bin; press T then u from another session to restore"):format(
+        display_name(session)
+      )
+    )
+    config.detach_current_session(session)
+    return
+  end
+
+  vim.notify(("Moved Nvim session %q to Recycle Bin; its process is still alive"):format(display_name(session)))
+  load_sessions(state)
+  render_dashboard(state)
+end
+
+local function restore_session(state)
+  local session = context_session(state)
+  if not session or not session.trashed then
+    vim.notify("请先在 Session 回收站中选择一个 session", vim.log.levels.WARN)
+    return
+  end
+
+  local ok, err = store:restore_session(session)
+  if not ok then
+    vim.notify("恢复 Nvim session 失败: " .. tostring(err), vim.log.levels.ERROR)
+    return
+  end
+  session.trashed = false
+  session.trashed_at = nil
+  load_sessions(state)
+  render_dashboard(state, "session:" .. session.session_id)
+  vim.notify(("Restored Nvim session %q"):format(display_name(session)))
+end
+
+local function toggle_recycle_bin(state)
+  if state.mode == "tags" then
+    state.show_tag_trash = not state.show_tag_trash
+    refresh_note_data(state, state.focused_session_id)
+    local session = session_by_id(state, state.focused_session_id)
+    local entries = session and (state.show_tag_trash and session.deleted_notes or session.notes) or {}
+    local first = entries and entries[1]
+    local key = first and (first.trashed and "trash-entry:" .. first.trash_id or "entry:" .. first.id)
+      or "session:" .. tostring(state.focused_session_id or "")
+    render_dashboard(state, key)
+    return
+  end
+
+  state.show_session_trash = not state.show_session_trash
+  load_sessions(state)
+  render_dashboard(state)
+end
+
+local function restore_context(state)
+  if state.mode == "tags" then
+    restore_entry(state)
+  else
+    restore_session(state)
+  end
+end
+
 local function show_help(state)
   local lines
   local title
   if state.mode == "tags" then
-    lines = {
-      "Enter/e edit · i edit in Insert · a add · dd/x trash tag",
-      "j/k move tags · / search · t/q/Esc return to sessions · R refresh",
-    }
-    title = "Session Tags"
+    if state.show_tag_trash then
+      lines = {
+        "u restore tag · dd/x permanently delete · T active tags",
+        "j/k move tags · t/q/Esc return to sessions · R refresh",
+      }
+      title = "Tag Trash"
+    else
+      lines = {
+        "Enter/e edit · i edit in Insert · a add · dd/x trash tag",
+        "T tag trash · j/k move tags · t/q/Esc return · R refresh",
+      }
+      title = "Session Tags"
+    end
   else
     lines = {
-      "Enter connect · t manage tags · dd delete session",
-      "c create · r rename · A archives · R refresh",
+      "Enter connect · t manage tags · dd move session to Recycle Bin",
+      "T Recycle Bin · u restore · P past notes · dd delete past notes",
+      "c create · r rename · R refresh",
       "j/k move sessions · / search · q/Esc close",
     }
     title = "Nvim Sessions"
@@ -1301,13 +1819,19 @@ local function set_dashboard_keymaps(state)
       delete_session(state)
     end
   end, "Delete session or tag")
-  map("A", function()
+  map("T", function()
+    toggle_recycle_bin(state)
+  end, "Toggle session or tag recycle bin")
+  map("u", function()
+    restore_context(state)
+  end, "Restore session or tag from recycle bin")
+  map("P", function()
     if state.mode == "sessions" then
       state.show_archives = not state.show_archives
       load_sessions(state)
       render_dashboard(state)
     end
-  end, "Toggle archived session progress")
+  end, "Toggle past session notes")
   map("R", function()
     load_sessions(state)
     render_dashboard(state)
@@ -1393,7 +1917,10 @@ end
 function M.setup(opts)
   assert(type(opts) == "table", "session dashboard setup requires options")
   assert(type(opts.discover_sessions) == "function", "discover_sessions callback is required")
+  assert(type(opts.stop_session) == "function", "stop_session callback is required")
   assert(type(opts.stop_current_session) == "function", "stop_current_session callback is required")
+  assert(type(opts.detach_current_session) == "function", "detach_current_session callback is required")
+  assert(type(opts.clear_agent) == "function", "clear_agent callback is required")
   config = opts
   config.normalize_name = config.normalize_name or trim
   config.read_agent_state = config.read_agent_state or function()
@@ -1405,6 +1932,28 @@ function M.setup(opts)
   end
   store = Store.new(opts.notes_dir or path_join(session_root, "notes"))
   return M
+end
+
+function M.cleanup_expired(sessions)
+  assert(config and store, "session dashboard is not configured")
+  purge_expired_tag_trash()
+  if type(sessions) ~= "table" then
+    local ok, discovered = pcall(config.discover_sessions)
+    sessions = ok and type(discovered) == "table" and discovered or {}
+  end
+
+  local started = 0
+  local now = os.time()
+  for _, session in ipairs(sessions) do
+    session.session_id = session.session_id or store:session_id(session)
+    if session.session_id then
+      hydrate_session_retention(session, now)
+      if should_automatically_purge_session(session) and start_automatic_session_purge(session) then
+        started = started + 1
+      end
+    end
+  end
+  return started
 end
 
 function M.open(opts)
@@ -1445,6 +1994,9 @@ function M.open(opts)
     mode = opts.current_notes and "tags" or "sessions",
     focused_session_id = nil,
     show_archives = false,
+    show_session_trash = false,
+    show_tag_trash = false,
+    trashed_session_count = 0,
     animation_frame = 1,
     timer_closed = false,
   }

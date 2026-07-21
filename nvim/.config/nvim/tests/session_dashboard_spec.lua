@@ -32,6 +32,13 @@ local function session_row(state, session_id)
   return nil
 end
 
+local function set_trashed_at(store, session, timestamp)
+  local metadata = assert(store:load_metadata(session))
+  metadata.trashed_at = timestamp
+  metadata.updated_at = timestamp
+  assert(vim.fn.writefile({ vim.json.encode(metadata) }, store:metadata_path(session), "b") == 0)
+end
+
 local config_root = vim.fs.normalize(vim.fn.getcwd() .. "/nvim/.config/nvim")
 package.path = table.concat({
   vim.fs.joinpath(config_root, "lua", "?.lua"),
@@ -77,8 +84,25 @@ local entries = store:list_entries(fake_session)
 assert_equal(#entries, 2, "stored entry count")
 assert_equal(store:load_metadata(fake_session).name, "dotfiles work", "session metadata")
 
+local expired_tag_session = vim.tbl_extend("force", vim.deepcopy(second_session), {
+  address = vim.fs.joinpath(notes_root, "nvim-1700000002-44-9.sock"),
+  name = "expired tag fixture",
+})
+local expired_tag = assert(store:create_entry(expired_tag_session))
+assert(store:delete_entry(expired_tag))
+local deleted_tag = assert(store:list_deleted_entries(expired_tag_session)[1])
+local expired_tag_path = deleted_tag.path:gsub("deleted%-%d+$", "deleted-1")
+assert(uv.fs_rename(deleted_tag.path, expired_tag_path))
+local purged_tags, purge_errors = store:purge_expired_deleted_entries(os.time(), 30 * 24 * 60 * 60)
+assert_equal(purged_tags, 1, "expired Tag Trash count")
+assert_equal(#purge_errors, 0, "expired Tag Trash errors")
+assert(not uv.fs_stat(expired_tag_path), "expired Tag Trash file should be unlinked")
+assert(store:delete_session_record(expired_tag_session))
+
 local sessions = { fake_session, second_session }
 local stopped_current_session
+local detached_current_session
+local stopped_remote_session
 dashboard.setup({
   notes_dir = notes_root,
   discover_sessions = function()
@@ -96,13 +120,68 @@ dashboard.setup({
   rename_session = function()
     return true
   end,
-  stop_session = function() end,
+  stop_session = function(session, callback)
+    stopped_remote_session = session
+    for index, candidate in ipairs(sessions) do
+      if candidate.address == session.address then
+        table.remove(sessions, index)
+        break
+      end
+    end
+    callback(true)
+  end,
   stop_current_session = function(session)
     stopped_current_session = session
+  end,
+  detach_current_session = function(session)
+    detached_current_session = session
+    for _, candidate in ipairs(sessions) do
+      if candidate.address == session.address then
+        candidate.ui_count = 0
+      end
+    end
   end,
   clear_agent = function() end,
   autosave_delay = 20,
 })
+
+local expired_session = vim.tbl_extend("force", vim.deepcopy(second_session), {
+  address = vim.fs.joinpath(notes_root, "nvim-1700000003-45-10.sock"),
+  name = "expired session",
+  ui_count = 0,
+})
+assert(store:trash_session(expired_session))
+set_trashed_at(store, expired_session, os.time() - 8 * 24 * 60 * 60)
+sessions[#sessions + 1] = expired_session
+assert_equal(dashboard.cleanup_expired(), 1, "expired Session cleanup should start")
+assert(
+  vim.wait(200, function()
+    return stopped_remote_session
+      and stopped_remote_session.address == expired_session.address
+      and not uv.fs_stat(store:session_path(expired_session))
+  end),
+  "expired Session should be stopped automatically"
+)
+assert(not uv.fs_stat(store:session_path(expired_session)), "empty expired Session metadata should be removed")
+stopped_remote_session = nil
+
+local paused_session = vim.tbl_extend("force", vim.deepcopy(second_session), {
+  address = vim.fs.joinpath(notes_root, "nvim-1700000004-46-11.sock"),
+  name = "attached expired session",
+  ui_count = 1,
+})
+assert(store:trash_session(paused_session))
+set_trashed_at(store, paused_session, os.time() - 8 * 24 * 60 * 60)
+sessions[#sessions + 1] = paused_session
+assert_equal(dashboard.cleanup_expired(), 0, "attached expired Session cleanup should pause")
+assert(stopped_remote_session == nil, "attached expired Session must not be stopped")
+for index, candidate in ipairs(sessions) do
+  if candidate.address == paused_session.address then
+    table.remove(sessions, index)
+    break
+  end
+end
+assert(store:delete_session_record(paused_session))
 
 dashboard.open()
 local state = assert(dashboard._active_dashboard())
@@ -244,6 +323,21 @@ assert_equal(
   "delete selects a remaining tag"
 )
 
+local recycle_mapping = vim.fn.maparg("T", "n", false, true)
+assert(type(recycle_mapping.callback) == "function", "dashboard recycle-bin mapping is missing")
+recycle_mapping.callback()
+assert(state.show_tag_trash, "T should open the focused session's Tag trash")
+assert(window_title(state.winid):find("Tag Trash · dotfiles work", 1, true), "Tag trash title names its session")
+assert_equal(#store:list_deleted_entries(fake_session), 1, "deleted tag should be listed in Tag trash")
+
+local restore_mapping = vim.fn.maparg("u", "n", false, true)
+assert(type(restore_mapping.callback) == "function", "dashboard restore mapping is missing")
+restore_mapping.callback()
+assert_equal(#store:list_deleted_entries(fake_session), 0, "u should remove the tag from trash")
+assert_equal(#store:list_entries(fake_session), 3, "u should restore the tag to active entries")
+recycle_mapping.callback()
+assert(not state.show_tag_trash, "T should return to active tags")
+
 local close_dashboard_mapping = vim.fn.maparg("q", "n", false, true)
 close_dashboard_mapping.callback()
 assert_equal(state.mode, "sessions", "q returns from Tag mode to Session mode")
@@ -253,11 +347,27 @@ sessions = {}
 vim.api.nvim_set_current_win(state.winid)
 refresh_mapping = vim.fn.maparg("R", "n", false, true)
 refresh_mapping.callback()
-local archive_mapping = vim.fn.maparg("A", "n", false, true)
-archive_mapping.callback()
+local past_notes_mapping = vim.fn.maparg("P", "n", false, true)
+assert(type(past_notes_mapping.callback) == "function", "Past Session Notes mapping is missing")
+past_notes_mapping.callback()
 text = dashboard_text(state)
-assert(text:find("Archived Sessions", 1, true), "archive section should be visible")
-assert(text:find("dotfiles work", 1, true), "archived session should retain its name")
+assert(text:find("Past Session Notes", 1, true), "past notes section should be visible")
+assert(text:find("ENDED", 1, true), "past notes should use the ENDED status")
+assert(text:find("dotfiles work", 1, true), "past notes should retain the session name")
+
+local past_notes_row = assert(session_row(state, store:session_id(fake_session)))
+vim.api.nvim_win_set_cursor(state.winid, { past_notes_row, 0 })
+original_select = vim.ui.select
+vim.ui.select = function(items, opts, callback)
+  assert_equal(items[1], "Cancel", "Past Session Notes delete defaults to cancel")
+  assert(opts.prompt:find("Metadata and Tag Trash", 1, true), "past notes delete explains its full scope")
+  callback(items[2])
+end
+delete_mapping = vim.fn.maparg("dd", "n", false, true)
+delete_mapping.callback()
+vim.ui.select = original_select
+assert(not uv.fs_stat(store:session_path(fake_session)), "dd should permanently remove all Past Session Notes")
+assert(session_row(state, store:session_id(fake_session)) == nil, "deleted Past Session Notes should leave the list")
 
 vim.api.nvim_set_current_win(state.winid)
 close_dashboard_mapping = vim.fn.maparg("q", "n", false, true)
@@ -280,25 +390,54 @@ state = assert(dashboard._active_dashboard())
 vim.api.nvim_set_current_win(state.winid)
 delete_mapping = vim.fn.maparg("dd", "n", false, true)
 assert(type(delete_mapping.callback) == "function", "dashboard delete mapping is missing")
+delete_mapping.callback()
+assert_equal(detached_current_session.name, fake_session.name, "current session should detach after moving to trash")
+assert(stopped_current_session == nil, "moving current session to trash must not stop it")
+assert(store:session_trashed_at(fake_session) ~= nil, "current session should have recycle metadata")
+assert(dashboard._active_dashboard() == nil, "trashing current session should close the dashboard before detach")
 
+dashboard.open()
+state = assert(dashboard._active_dashboard())
+assert(session_row(state, store:session_id(fake_session)) == nil, "trashed session should be hidden by default")
+vim.api.nvim_set_current_win(state.winid)
+recycle_mapping = vim.fn.maparg("T", "n", false, true)
+recycle_mapping.callback()
+assert(dashboard_text(state):find("Recycle Bin", 1, true), "T should show the Session recycle bin")
+assert(dashboard_text(state):find("expires 7d", 1, true), "Session trash should show its seven-day retention")
+local current_trash_row = assert(session_row(state, store:session_id(fake_session)))
+vim.api.nvim_win_set_cursor(state.winid, { current_trash_row, 0 })
+restore_mapping = vim.fn.maparg("u", "n", false, true)
+restore_mapping.callback()
+assert(store:session_trashed_at(fake_session) == nil, "u should restore a trashed session")
+assert(session_row(state, store:session_id(fake_session)) ~= nil, "restored session should return to the live list")
+
+local remote_row = assert(session_row(state, store:session_id(second_session)))
+vim.api.nvim_win_set_cursor(state.winid, { remote_row, 0 })
+delete_mapping = vim.fn.maparg("dd", "n", false, true)
+delete_mapping.callback()
+assert(stopped_remote_session == nil, "first dd must not stop a remote session")
+assert(store:session_trashed_at(second_session) ~= nil, "first dd should move a remote session to trash")
+
+remote_row = assert(session_row(state, store:session_id(second_session)))
+vim.api.nvim_win_set_cursor(state.winid, { remote_row, 0 })
 original_select = vim.ui.select
 vim.ui.select = function(items, opts, callback)
-  assert_equal(items[1], "Cancel", "current delete defaults to cancel")
-  assert(opts.prompt:find("Progress notes stay archived", 1, true), "current delete explains archive behavior")
-  callback(items[1])
-end
-delete_mapping.callback()
-assert(stopped_current_session == nil, "cancel should keep the current session")
-assert(dashboard._active_dashboard() == state, "cancel should keep the dashboard open")
-
-vim.ui.select = function(items, _, callback)
-  assert(items[2]:find("return to shell", 1, true), "current delete explains UI exit")
+  assert_equal(items[1], "Cancel", "permanent delete defaults to cancel")
+  assert(opts.prompt:find("cannot be restored", 1, true), "permanent delete explains the irreversible runtime loss")
   callback(items[2])
 end
 delete_mapping.callback()
 vim.ui.select = original_select
-assert_equal(stopped_current_session.name, fake_session.name, "confirmed current session delete")
-assert(dashboard._active_dashboard() == nil, "current session delete should close the dashboard")
+assert_equal(stopped_remote_session.name, second_session.name, "second dd should permanently stop the remote session")
+assert(
+  session_row(state, store:session_id(second_session)) == nil,
+  "permanently deleted session should leave the dashboard"
+)
+
+vim.api.nvim_set_current_win(state.winid)
+close_dashboard_mapping = vim.fn.maparg("q", "n", false, true)
+close_dashboard_mapping.callback()
+assert(dashboard._active_dashboard() == nil, "dashboard should close after recycle-bin tests")
 
 vim.fs.rm(notes_root, { recursive = true, force = true })
 print("session dashboard: ok")

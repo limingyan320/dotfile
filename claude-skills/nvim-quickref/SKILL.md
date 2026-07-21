@@ -23,8 +23,8 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 - `clipboard = unnamedplus`；检测到 `$SSH_TTY` / `$SSH_CONNECTION` / `$XDG_SESSION_TYPE=tty` 时自动切到 **OSC 52**（走终端剪贴板，需要 iTerm2/WezTerm/kitty 等允许剪贴板访问，tmux 需 `set-clipboard on`）
 - `autoread` + `updatetime = 500`（缩短 `CursorHold` 触发间隔让外部改动近实时可见）
 - 外部改动侦测：`FocusGained` / `BufEnter` / `CursorHold{,I}` / `TermLeave` 主动 `checktime`；每个文件 buffer 还会跑一个 `uv.new_fs_event` watcher，被外部改动后弹 WARN `文件被外部修改，已重新加载`
-- terminal mode 使用不闪烁的黄色实心块光标；`<leader>t` 打开完整 terminal buffer；`<C-/>` / `<C-_>` 切换普通 shell 并自动进入输入，`<M-/>` 切换 `codex --yolo` agent 并保持 terminal-normal 方便继续阅读；对应 session 的 Codex drawer 成为前台当前窗口且视口位于最新输出时会自动 check，清除完成未读标记并联动关闭对应 macOS popup；两个通道共享底部 drawer，但各自保留 buffer / 进程，Codex 首次从当前上下文的 git 根启动；Codex terminal-normal 中的 `gx` 会把光标下或 visual 选中的相对路径按该会话启动根解析，并在上一个编辑窗口打开
-- Neovim 0.12 live session：交互式 shell 的 `nvim` / `nvim .` / `vim` 由独立的 `dotfiles-nvim-host` tmux server 托管，host 需通过 RPC 探活才会接入 UI；terminal 意外关闭后进程仍存活；`<leader>d` 主动脱离；`<leader>fs` 打开 Mason 风格的原生 Session Dashboard，聚焦 session 时自动 cascade 展开其 tag，`<leader>fS` 直接进入当前 session 的 Tag 模式；Dashboard 列出 `CURRENT` / `DETACHED` / `ATTACHED`，支持连接、新建、重命名、删除、Codex 状态动画和按时间分组的人工进度日志；日志是本机 state 目录里的 Markdown，约 400ms debounce 自动保存，session 退出后保留为可切换查看的 archive；跨 session 状态读取仍走总等待上限 700ms 的并行外部 RPC，日志读取不增加 RPC；前台仍是直接 remote UI，普通 `tmux ls` 不显示隐藏 host，`:qa` 会清理对应 live session / socket但保留日志
+- terminal mode 使用不闪烁的黄色实心块光标；`<leader>t` 打开完整 terminal buffer；`<C-/>` / `<C-_>` 切换普通 shell 并自动进入输入，`<M-/>` 切换 `codex --yolo` agent 并保持 terminal-normal 方便继续阅读；对应 session 的 Codex drawer 成为前台当前窗口且视口位于最新输出时会自动 check，清除完成未读标记并联动关闭对应 macOS popup；Codex 回合被中断而缺少 `Stop` hook 时，本 session 会通过 title spinner 静默 6 秒或 `TermClose` 自动清除同 turn 的陈旧 working；两个通道共享底部 drawer，但各自保留 buffer / 进程，Codex 首次从当前上下文的 git 根启动；Codex terminal-normal 中的 `gx` 会把光标下或 visual 选中的相对路径按该会话启动根解析，并在上一个编辑窗口打开
+- Neovim 0.12 live session：交互式 shell 的 `nvim` / `nvim .` / `vim` 由独立的 `dotfiles-nvim-host` tmux server 托管，host 需通过 RPC 探活才会接入 UI；terminal 意外关闭后进程仍存活；`<leader>d` 主动脱离；`<leader>fs` 打开原生 Session Dashboard，聚焦 session 时自动展开 tag，`<leader>fS` 直接进入当前 session 的 Tag 模式；Dashboard 支持连接、新建、重命名、Session / Tag 回收站、Codex 状态动画和人工进度日志；live Session Trash 保留 7 天且到期时跳过 attached UI / working Codex，Tag Trash 保留 30 天；已结束 Session 的 Tag 以 `ENDED` / `Past Session Notes` 保留且可手动整组删除；日志约 400ms debounce 自动保存；跨 session RPC 总超时 700ms；普通 `tmux ls` 不显示隐藏 host
 - netrw 禁用（`vim.g.loaded_netrw = 1`），文件浏览全走 oil
 
 ## 自定义键位（非插件）
@@ -34,6 +34,9 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 | n/i | `<F2>` | toggle paste mode |
 | n | `<leader>vp` | toggle paste mode |
 | n | `<leader>z` | 像 tmux `prefix z` 一样临时放大当前窗口；再按一次恢复原分屏布局 |
+| n | `<C-w>V` / `<C-w>S` | 在右侧 / 下方创建 split 并直接聚焦新窗口；原生小写 `<C-w>v/s` 继续在左侧 / 上方创建并聚焦 |
+| n | `<C-w>c` | 关闭当前普通窗口；当前是任意 terminal / Codex 窗口时拒绝关闭 |
+| n | `<C-w>o` | 关闭其他普通窗口，但保留当前普通窗口和所有 terminal / Codex；从 terminal / Codex 或浮窗执行时不操作 |
 | n | `<leader>d` | detach 当前 Nvim UI，完整保留窗口、buffer、terminal / Codex 进程供稍后恢复 |
 | n | `<leader>yp` | 复制当前 buffer 绝对路径到 `+` 和 `"` |
 | n | `<leader>t` | 在当前上下文目录开完整 terminal buffer 并直接进入输入；若当前 buffer 是 terminal，则沿用该 shell cwd |
@@ -92,9 +95,9 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 
 `<leader>fs` 打开 normal-first 的 Mason 风格 Dashboard 并进入 `Nvim Sessions` 模式；live session 按 `CURRENT` → `DETACHED` → `ATTACHED` 排列。最左侧固定 3 格 agent 列中，流动 `●··` 表示 Codex working，闪烁红色 `!` 表示 ready/unread；`◆ 数量 · 新鲜度` 表示已有人工进度，`◇ 0` 表示无记录。聚焦的 session 有 tag 时会自动 cascade 展开，移动到其他 session 后旧 cascade 自动收起。跨 session RPC 仍并行且总超时 700ms，日志只从本机 `${DOTFILES_NVIM_SESSION_DIR}/notes/` 读取。
 
-Session 模式中 `j` / `k`、`gg` / `G` 只移动 session，`Enter` 连接，`t` 进入标题明确标识的 `Session Tags · 名称` 子模式；`c` 新建，`r` / `<C-r>` 重命名，`dd` 确认删除 live session 并保留日志，其中 `CURRENT` 确认后本地执行 `qa!`、当前 UI 返回 shell，其他 session 仍走远端 RPC；`A` 切换 archive。Tag 模式中移动键只遍历 tag，`Enter` / `e` 在 normal mode 打开选中 Markdown，`i` 打开并进入 insert，`a` 新建 timestamp tag 并进入 insert，`dd` / `x` 把 tag 移到该 session 的 `trash/`；`t` / `q` / `Esc` 返回 Session 模式。`R` 两层都刷新；`/` 使用 Vim 原生搜索；`?` 显示当前模式帮助；Session 模式的 `q` / `Esc` 关闭 Dashboard。
+Session 模式中 `j` / `k`、`gg` / `G` 只移动 session，`Enter` 连接，`t` 进入 `Session Tags · 名称`；`c` 新建，`r` / `<C-r>` 重命名；`dd` 把 live session 移入保留 7 天的回收站，目标为 `CURRENT` 时只 detach UI；`T` 显示 `TRASHED`，`u` 恢复，回收站内再次 `dd` 才确认永久结束；行内显示 `expires` 倒计时，attached UI / working Codex 时显示 `expiry paused`。`P` 显示 `Past Session Notes`，`ENDED` 行 `dd` 永久删除其全部 Tag、metadata 和 Tag Trash。Tag 模式的 `dd` / `x` 移入保留 30 天的 `Tag Trash`，`T` 切换、`u` 恢复，回收站内 `dd` / `x` 永久删除。`R` 刷新并执行到期检查；`?` 显示帮助；Session 模式的 `q` / `Esc` 关闭 Dashboard。
 
-Tag 操作层只是 Dashboard 的 UI 子模式，两层实际都仍处于 Vim normal mode。进度编辑器是真实 Markdown 文件 buffer，完整支持 Vim normal / insert；TextChanged 停止约 400ms 后自动写盘，`InsertLeave` / `BufLeave` 也强制保存，编辑器 normal mode `q` 保存并返回 Tag 模式，`Ctrl+S` 立即保存。每条记录的原始 epoch 在文件名中，Dashboard 按本机时区呈现 `Today` / `Yesterday` / 日期；session 退出或被删除后，日志仍可在 Session 模式按 `A` 查看和编辑。`<leader>fS` 打开同一 Dashboard、进入当前 session 的 Tag 模式并定位最新记录。
+Tag 操作层只是 Dashboard 的 UI 子模式，两层都仍处于 Vim normal mode。进度编辑器是真实 Markdown buffer，完整支持 normal / insert；TextChanged 停止约 400ms 后自动写盘，`InsertLeave` / `BufLeave` 也强制保存，normal mode `q` 保存并返回 Tag 模式，`Ctrl+S` 立即保存。记录按原始 epoch 和本机时区显示；Session 结束后 Tag 仍可按 `P` 作为 Past Notes 查看和编辑，Past Notes 不自动过期。到期检查在新交互式 Nvim 启动、Dashboard 打开或 `R` 时运行。`<leader>fS` 直接进入当前 Session 的 Tag 模式。
 
 ### `nvim-telescope/telescope.nvim` (+ `telescope-file-browser.nvim`, `dressing.nvim`)
 
