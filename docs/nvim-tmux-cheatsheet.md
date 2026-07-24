@@ -69,17 +69,17 @@
 
 | 按键 | 操作 |
 |------|------|
-| `Ctrl+W c` | 关闭当前普通窗口（不退出 vim）；当前是任意 terminal / Codex 窗口时拒绝关闭 |
+| `Ctrl+W c` | 关闭当前普通窗口（不退出 vim）；当前是任意 terminal 窗口时拒绝关闭 |
 | `Ctrl+W q` | 关闭当前窗口（最后一个则退出 vim） |
-| `Ctrl+W o` | 只保留当前普通窗口和所有 terminal / Codex 窗口，关闭其他普通窗口；从 terminal / Codex 或浮窗执行时不操作 |
+| `Ctrl+W o` | 只保留当前普通窗口和所有 terminal 窗口，关闭其他普通窗口；从 terminal 或浮窗执行时不操作 |
 
-> 这里保护的是所有 `buftype=terminal` 窗口，包括 `Space t` 打开的完整 terminal、底部普通 shell 和 Codex drawer。保护只覆盖 normal mode 的 `Ctrl+W c/o`；`:close`、`:only`、`Ctrl+W q` 仍保持原生行为，terminal input mode 的 `Ctrl+W` 仍发送给终端程序。
+> 这里保护的是所有 `buftype=terminal` 窗口，包括 `Space t` 打开的完整 terminal、底部普通 shell 和 agent drawer。保护只覆盖 normal mode 的 `Ctrl+W c/o`；`:close`、`:only`、`Ctrl+W q` 仍保持原生行为，terminal input mode 的 `Ctrl+W` 仍发送给终端程序。
 
 ---
 
 ## Live Session（像 tmux detach / attach）
 
-Neovim 0.12 可以把当前 TUI 脱离，但让原来的 Nvim 进程继续在后台运行；窗口布局、buffer、未保存修改以及普通 shell / Codex terminal 都会原样保留。交互式 shell 里的普通 `nvim` / `nvim .` / `vim` 会由独立的隐藏 tmux server 托管，因此即使承载 TUI 的 terminal 窗口被意外关闭，Nvim 进程和视图也仍会存活。若提示版本过低，先运行 `type -a nvim` 和 `nvim --version`；本配置会把 Homebrew 的 `bin` 放到系统目录前，重新加载 `~/.shared_rc` 或新开 shell 后应命中 0.12+。
+Neovim 0.12 可以把当前 TUI 脱离，但让原来的 Nvim 进程继续在后台运行；窗口布局、buffer、未保存修改以及普通 shell / agent terminal 都会原样保留。交互式 shell 里的普通 `nvim` / `nvim .` / `vim` 会由独立的隐藏 tmux server 托管，因此即使承载 TUI 的 terminal 窗口被意外关闭，Nvim 进程和视图也仍会存活。若提示版本过低，先运行 `type -a nvim` 和 `nvim --version`；本配置会把 Homebrew 的 `bin` 放到系统目录前，重新加载 `~/.shared_rc` 或新开 shell 后应命中 0.12+。
 
 | 按键 | 操作 |
 |------|------|
@@ -203,13 +203,16 @@ browser 内（telescope 默认键）：
 | `Space yp` | 任意 buffer 里复制当前文件的**绝对路径** |
 | `Space t` | 在当前上下文目录开完整 terminal buffer 并直接进入输入；如果当前 buffer 就是 terminal，会沿用该 shell 的 cwd |
 | `Ctrl+/` | 底部普通 shell 开关；首次按当前上下文目录启动，显示后自动进入输入，隐藏时保留进程（`Ctrl+_` 也兼容） |
-| `Option + /` | 底部 Codex agent 开关；打开后若 Codex 最新输出实际可见会自动 check、清除红色完成未读并关闭对应 macOS popup，单纯隐藏未查看的 drawer 不会清未读；以 `codex --yolo` 从当前上下文的 Git 根启动，显示后停在 terminal-normal，隐藏时保留对话进程 |
+| `Option + A` | 打开 agent 选择菜单；`j` / `k` 移动、`Enter` 确认、`Esc` 取消，只列出当前 `PATH` 中已安装的 Codex / Grok |
+| `Option + /` | 底部最近选择的 agent 开关；Codex 以 `codex --yolo`、Grok 以 `grok --yolo` 从当前上下文的 Git 根启动，显示后停在 terminal-normal，隐藏时保留各自对话进程 |
 | `gx`（Codex terminal normal/visual） | 打开光标下或 visual 选中的绝对/项目相对路径；支持 `:行:列` / `#L行C列`，忽略末尾或紧邻后续正文的中英文标点，在上一个非 terminal 编辑窗口跳转 |
 | `Option + +` / `Option + -` / `Option + 0` | 增高 / 降低 / 重置当前底部通道高度 |
 
-> 普通 shell 和 Codex 各自保留独立的 terminal buffer / 进程，但共用同一个底部 drawer，所以互相切换不会堆叠窗口或丢失 shell / 对话状态。普通 shell 显示后自动进入 terminal 输入；Codex 显示后保持 terminal-normal 和原来的阅读位置，需要回复时按 `i` / `a` / `A` 进入输入。普通 shell 默认高 12 行；Codex 默认至少 12 行，并尽量占屏幕高度的 45%。normal / insert / terminal 模式下都能直接切换。若把 drawer 窗口改作普通编辑 buffer，下次 toggle 会保留该编辑窗口并另开 drawer。`Option + +` 在部分终端里会发成 `<M-=>`，已一起兼容。
+> 普通 shell、Codex 和 Grok 各自保留独立的 terminal buffer / 进程，但共用同一个底部 drawer，所以互相切换不会堆叠窗口或丢失 shell / 对话状态。普通 shell 显示后自动进入 terminal 输入；agent 显示后保持 terminal-normal 和原来的阅读位置，需要回复时按 `i` / `a` / `A` 进入输入。普通 shell 默认高 12 行；agent 默认至少 12 行，并尽量占屏幕高度的 45%。normal / insert / terminal 模式下都能直接切换。若把 drawer 窗口改作普通编辑 buffer，下次 toggle 会保留该编辑窗口并另开 drawer。`Option + +` 在部分终端里会发成 `<M-=>`，已一起兼容。
 
-> Codex 通道在一次 Neovim 运行期间只维护一个会话，并默认使用 `--yolo` 权限；切换到其他项目后仍会回到原对话。Codex terminal 中按 `gx` 时，光标下或同一行内 visual 选中的相对路径始终按这个会话启动时的项目根解析，不会误用后来切换到的项目；反引号路径、Markdown 链接、`path:行:列` 和 `path#L行C列` 都可识别，引用末尾或定位后紧邻正文的中英文标点会自动忽略。目标文件会复用刚离开的非 terminal 编辑窗口，找不到时回退到打开 drawer 前的窗口，Codex 继续留在底部；网页 URL 仍交给系统浏览器。Codex 进程退出后，隐藏并重新打开会从当前项目启动新会话；若 `codex` 不在 `PATH` 中则会提示错误。
+> 最近选择保存在 `stdpath("state")/dotfiles-selected-agent`，因此其他 live session 下一次按 `Option + /`、以及 Neovim 重启后都会跟随最新选择。如果保存的 agent 在当前机器不可用，会自动回退到已安装列表中的第一个，默认优先 Codex。新增 agent 时只需在配置中的 agent 注册表和顺序列表各加一项。
+
+> Codex 和 Grok 通道在一次 Neovim 运行期间各自只维护一个会话，并默认使用 `--yolo` 最高权限；切换到其他项目后仍会回到各自原对话。Codex terminal 中按 `gx` 时，光标下或同一行内 visual 选中的相对路径始终按这个会话启动时的项目根解析，不会误用后来切换到的项目；反引号路径、Markdown 链接、`path:行:列` 和 `path#L行C列` 都可识别，引用末尾或定位后紧邻正文的中英文标点会自动忽略。目标文件会复用刚离开的非 terminal 编辑窗口，找不到时回退到打开 drawer 前的窗口，Codex 继续留在底部；网页 URL 仍交给系统浏览器。Codex 最新输出实际可见时还会自动 check、清除红色完成未读并关闭对应 macOS popup；这些通知和 `gx` 集成目前只属于 Codex。agent 进程退出后，隐藏并重新打开会从当前项目启动新会话。
 
 > 外部工具（如 Claude）改了文件，nvim 会在光标停 0.5 秒内自动重新加载并提示。
 
@@ -219,10 +222,17 @@ browser 内（telescope 默认键）：
 
 | 按键 / 命令 | 操作 |
 |-------------|------|
-| `Space fb` | Telescope 搜索 buffer 列表 |
+| `Space fb` / `:ls` | 打开同一套 Telescope session buffer 管理器；默认 normal mode |
+| 管理器内 `j` / `k` | 移动选择并实时预览 buffer 内容 |
+| 管理器内 `Enter` | 在安全的普通编辑窗口打开选择，并停留在该窗口 |
+| 管理器内 `dd` | 删除选择；clean buffer 直接删，modified buffer 先选择 Cancel / 保存后删除 / 丢弃后删除 |
+| 管理器内 `q` / `Esc` | 关闭并回到发起窗口 |
+| `:ls!` / `:ls {flags}` / `:buffers` / `:files` | 保持 Neovim 原生命令，不进入管理器 |
 | `:bn` / `:bp` | 下一个 / 上一个 buffer |
 | `:bd` | 关闭当前 buffer |
 | `:e filename` | 打开/新建文件 |
+
+> 管理器只列出当前 Nvim session 的普通 listed buffer；完整 terminal、底部 shell、Codex 和 Grok buffer 始终不会进入列表、预览、选择或删除范围。picker 和 modified 删除确认都限制在普通编辑窗口矩形内，不会盖住或替换 terminal / agent drawer。从 terminal / agent 发起时会路由到同 tab 的普通编辑窗口；如果当前 tab 只有 terminal，会临时在上方建一个编辑 split，取消时还原布局，选中后保留该 split。
 
 ---
 
@@ -234,7 +244,7 @@ browser 内（telescope 默认键）：
 |------|------|
 | `Ctrl+P` | 搜文件名（普通文件里基于当前文件的 git 根目录；oil 目录视图里基于当前目录） |
 | `Space fg` | 全局内容搜索（同样以 git 根为范围） |
-| `Space fb` | 搜已打开 buffer |
+| `Space fb` | 打开上述安全 session buffer 管理器（与精确输入 `:ls` 相同） |
 | Telescope 内 `Alt+V` / `Alt+S` | 把选中的文件左右 / 上下分屏打开 |
 | Telescope 内 `Ctrl+H` | 切换：显示隐藏文件 + 忽略 .gitignore（保留已输入内容） |
 | Telescope 内 `Ctrl+J/K` | 上下移动 |

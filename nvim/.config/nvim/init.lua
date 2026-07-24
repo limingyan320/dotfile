@@ -1522,7 +1522,21 @@ local terminal_sessions = {
   codex = {
     buf = nil,
     command = { "codex", "--yolo" },
+    label = "Codex",
     executable = "codex",
+    is_agent = true,
+    context_dir = project_context_dir,
+    start_insert = false,
+    default_height = function()
+      return math.max(12, math.floor(vim.o.lines * 0.45))
+    end,
+  },
+  grok = {
+    buf = nil,
+    command = { "grok", "--yolo" },
+    label = "Grok",
+    executable = "grok",
+    is_agent = true,
     context_dir = project_context_dir,
     start_insert = false,
     default_height = function()
@@ -1530,6 +1544,44 @@ local terminal_sessions = {
     end,
   },
 }
+
+local agent_order = { "codex", "grok" }
+local selected_agent_path = vim.fs.joinpath(vim.fn.stdpath("state"), "dotfiles-selected-agent")
+
+local function available_agent_names()
+  local names = {}
+  for _, name in ipairs(agent_order) do
+    local session = terminal_sessions[name]
+    if session and session.is_agent and vim.fn.executable(session.executable) == 1 then
+      names[#names + 1] = name
+    end
+  end
+  return names
+end
+
+local function selected_agent_name()
+  if vim.fn.filereadable(selected_agent_path) == 1 then
+    local ok, lines = pcall(vim.fn.readfile, selected_agent_path, "", 1)
+    if ok then
+      local name = vim.trim(lines[1] or "")
+      local session = terminal_sessions[name]
+      if session and session.is_agent and vim.fn.executable(session.executable) == 1 then
+        return name
+      end
+    end
+  end
+
+  return available_agent_names()[1]
+end
+
+local function save_selected_agent(name)
+  local ok, result = pcall(vim.fn.writefile, { name }, selected_agent_path)
+  if not ok or result ~= 0 then
+    vim.notify("无法保存默认 agent: " .. tostring(result), vim.log.levels.WARN)
+    return false
+  end
+  return true
+end
 
 local codex_terminal_activity = require("dotfiles.codex_terminal_activity").setup({
   idle_delay_ms = codex_terminal_idle_delay_ms,
@@ -1547,12 +1599,10 @@ vim.keymap.set("n", "<C-w>S", function()
   vim.cmd("rightbelow split")
 end, { desc = "Split below and focus" })
 
-local function protected_terminal_window(win)
-  if not win or not vim.api.nvim_win_is_valid(win) then
+local function protected_terminal_buffer(bufnr)
+  if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
     return false
   end
-
-  local bufnr = vim.api.nvim_win_get_buf(win)
   if vim.bo[bufnr].buftype == "terminal" then
     return true
   end
@@ -1564,10 +1614,17 @@ local function protected_terminal_window(win)
   return false
 end
 
+local function protected_terminal_window(win)
+  if not win or not vim.api.nvim_win_is_valid(win) then
+    return false
+  end
+  return protected_terminal_buffer(vim.api.nvim_win_get_buf(win))
+end
+
 local function close_current_editor_window()
   local current_win = vim.api.nvim_get_current_win()
   if protected_terminal_window(current_win) then
-    vim.notify("Terminal/Codex 窗口不会被 <C-w>c 关闭", vim.log.levels.INFO)
+    vim.notify("Terminal/agent 窗口不会被 <C-w>c 关闭", vim.log.levels.INFO)
     return
   end
   vim.cmd("close")
@@ -1651,6 +1708,12 @@ local function codex_target_window()
 
   return best_win
 end
+
+local buffer_picker = require("dotfiles.buffer_picker").setup({
+  is_protected_buffer = protected_terminal_buffer,
+  is_editor_window = editor_target_window,
+  find_editor_window = codex_target_window,
+})
 
 local function terminal_hyperlink_at_cursor()
   local bufnr = vim.api.nvim_get_current_buf()
@@ -2161,22 +2224,67 @@ local function toggle_terminal_session(name)
   open_terminal_session(name)
 end
 
-local function map_terminal_session(keys, name, desc)
+local function toggle_selected_agent()
+  local name = selected_agent_name()
+  if not name then
+    vim.notify("没有找到可用的 agent CLI", vim.log.levels.ERROR)
+    return
+  end
+  toggle_terminal_session(name)
+end
+
+local function select_terminal_agent()
+  local current = selected_agent_name()
+  local available = available_agent_names()
+  if #available == 0 then
+    vim.notify("没有找到可用的 agent CLI", vim.log.levels.ERROR)
+    return
+  end
+
+  local choices = {}
+  if current then
+    choices[#choices + 1] = current
+  end
+  for _, name in ipairs(available) do
+    if name ~= current then
+      choices[#choices + 1] = name
+    end
+  end
+
+  vim.ui.select(choices, {
+    prompt = "Select agent",
+    kind = "dotfiles_agent_select",
+    format_item = function(name)
+      local label = terminal_sessions[name].label or name
+      return name == current and (label .. " (current)") or label
+    end,
+  }, function(name)
+    if not name or name == current then
+      return
+    end
+    if save_selected_agent(name) then
+      vim.notify("默认 agent 已切换为 " .. (terminal_sessions[name].label or name))
+    end
+  end)
+end
+
+local function map_terminal_action(keys, action, desc)
   for _, key in ipairs(keys) do
-    vim.keymap.set({ "n", "i" }, key, function()
-      toggle_terminal_session(name)
-    end, { desc = desc })
-    vim.keymap.set("t", key, function()
+    vim.keymap.set("n", key, action, { desc = desc })
+    vim.keymap.set({ "i", "t" }, key, function()
       vim.cmd("stopinsert")
       vim.schedule(function()
-        toggle_terminal_session(name)
+        action()
       end)
     end, { desc = desc })
   end
 end
 
-map_terminal_session({ "<C-/>", "<C-_>" }, "shell", "Toggle shell terminal")
-map_terminal_session({ "<M-/>" }, "codex", "Toggle Codex agent")
+map_terminal_action({ "<C-/>", "<C-_>" }, function()
+  toggle_terminal_session("shell")
+end, "Toggle shell terminal")
+map_terminal_action({ "<M-/>" }, toggle_selected_agent, "Toggle selected agent")
+map_terminal_action({ "<M-a>" }, select_terminal_agent, "Select terminal agent")
 
 for _, key in ipairs({ "<M-+>", "<M-=>" }) do
   vim.keymap.set({ "n", "i", "t" }, key, function()
@@ -2485,42 +2593,77 @@ require("lazy").setup({
       },
     },
   },
+  {
+    "stevearc/dressing.nvim",
+    lazy = false,
+    opts = {
+      input = {
+        relative = "editor",
+        title_pos = "center",
+        prefer_width = 40,
+        get_config = function(opts)
+          if opts.kind == "dotfiles_buffer_save_as" then
+            return {
+              relative = "win",
+              min_width = 1,
+              max_width = 0.9,
+            }
+          end
+        end,
+      },
+      select = {
+        enabled = true,
+        get_config = function(opts)
+          if opts.kind == "dotfiles_agent_select" then
+            return {
+              backend = "builtin",
+              builtin = {
+                show_numbers = false,
+                min_height = 2,
+                max_height = 8,
+                min_width = { 24, 0.2 },
+                max_width = { 60, 0.6 },
+              },
+            }
+          end
+          if opts.kind == "dotfiles_buffer_delete" then
+            return {
+              backend = "builtin",
+              builtin = {
+                relative = "win",
+                show_numbers = false,
+                min_height = 1,
+                max_height = 3,
+                min_width = 1,
+                max_width = 0.9,
+              },
+            }
+          end
+          if opts.kind == "dotfiles_nvim_session_delete"
+            or opts.kind == "dotfiles_nvim_session_note_delete"
+          then
+            return {
+              backend = "builtin",
+              builtin = {
+                show_numbers = false,
+                min_height = 2,
+                max_height = 2,
+                min_width = { 40, 0.2 },
+                max_width = { 100, 0.8 },
+              },
+            }
+          end
+          return { enabled = false }
+        end,
+      },
+    },
+  },
   -- 文件搜索（Ctrl+P 搜文件，<leader>fg 全局搜内容）
   {
     "nvim-telescope/telescope.nvim",
     dependencies = {
       "nvim-lua/plenary.nvim",
       "nvim-telescope/telescope-file-browser.nvim",
-      {
-        "stevearc/dressing.nvim",
-        opts = {
-          input = {
-            relative = "editor",
-            title_pos = "center",
-            prefer_width = 40,
-          },
-          select = {
-            enabled = true,
-            get_config = function(opts)
-              if opts.kind == "dotfiles_nvim_session_delete"
-                or opts.kind == "dotfiles_nvim_session_note_delete"
-              then
-                return {
-                  backend = "builtin",
-                  builtin = {
-                    show_numbers = false,
-                    min_height = 2,
-                    max_height = 2,
-                    min_width = { 40, 0.2 },
-                    max_width = { 100, 0.8 },
-                  },
-                }
-              end
-              return { enabled = false }
-            end,
-          },
-        },
-      },
     },
     config = function()
       local telescope = require("telescope")
@@ -2599,7 +2742,7 @@ require("lazy").setup({
         builtin.live_grep({ cwd = project_root() })
       end, { desc = "Live grep (project root)" })
 
-      vim.keymap.set("n", "<leader>fb", builtin.buffers, { desc = "Buffers" })
+      vim.keymap.set("n", "<leader>fb", buffer_picker.open, { desc = "Manage session buffers" })
     end,
   },
   -- Git 侧边栏标记（增删改彩色竖条）

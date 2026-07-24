@@ -23,7 +23,8 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 - `clipboard = unnamedplus`；检测到 `$SSH_TTY` / `$SSH_CONNECTION` / `$XDG_SESSION_TYPE=tty` 时自动切到 **OSC 52**（走终端剪贴板，需要 iTerm2/WezTerm/kitty 等允许剪贴板访问，tmux 需 `set-clipboard on`）
 - `autoread` + `updatetime = 500`（缩短 `CursorHold` 触发间隔让外部改动近实时可见）
 - 外部改动侦测：`FocusGained` / `BufEnter` / `CursorHold{,I}` / `TermLeave` 主动 `checktime`；每个文件 buffer 还会跑一个 `uv.new_fs_event` watcher，被外部改动后弹 WARN `文件被外部修改，已重新加载`
-- terminal mode 使用不闪烁的黄色实心块光标；`<leader>t` 打开完整 terminal buffer；`<C-/>` / `<C-_>` 切换普通 shell 并自动进入输入，`<M-/>` 切换 `codex --yolo` agent 并保持 terminal-normal 方便继续阅读；对应 session 的 Codex drawer 成为前台当前窗口且视口位于最新输出时会自动 check，清除完成未读标记并联动关闭对应 macOS popup；Codex 回合被中断而缺少 `Stop` hook 时，本 session 会通过 title spinner 静默 6 秒或 `TermClose` 自动清除同 turn 的陈旧 working；两个通道共享底部 drawer，但各自保留 buffer / 进程，Codex 首次从当前上下文的 git 根启动；Codex terminal-normal 中的 `gx` 会把光标下或 visual 选中的相对路径按该会话启动根解析，并在上一个编辑窗口打开
+- terminal mode 使用不闪烁的黄色实心块光标；`<leader>t` 打开完整 terminal buffer；`<C-/>` / `<C-_>` 切换普通 shell 并自动进入输入；`<M-a>` 用 `j` / `k` 菜单选择 Codex 或 Grok，`<M-/>` 切换最近选择的 agent，选择结果保存在本机 Neovim state，多个 live session 和重启后会继续沿用；Codex 以 `codex --yolo`、Grok 以 `grok --yolo` 从首次打开时的 git 根启动，二者各自保留 buffer / 进程并停在 terminal-normal；对应 session 的 Codex drawer 成为前台当前窗口且视口位于最新输出时会自动 check，清除完成未读标记并联动关闭对应 macOS popup；Codex 回合被中断而缺少 `Stop` hook 时，本 session 会通过 title spinner 静默 6 秒或 `TermClose` 自动清除同 turn 的陈旧 working；普通 shell、Codex、Grok 共用底部 drawer；Codex terminal-normal 中的 `gx` 会把光标下或 visual 选中的相对路径按该会话启动根解析，并在上一个编辑窗口打开
+- `<leader>fb` 和精确输入 `:ls<CR>` 打开同一个安全 Telescope session buffer 管理器；terminal / shell / Codex / Grok buffer 永不进入列表或删除范围，`:ls!`、带 flags 的 `:ls`、`:buffers`、`:files` 保持原生
 - Neovim 0.12 live session：交互式 shell 的 `nvim` / `nvim .` / `vim` 由独立的 `dotfiles-nvim-host` tmux server 托管，host 需通过 RPC 探活才会接入 UI；terminal 意外关闭后进程仍存活；`<leader>d` 主动脱离；`<leader>fs` 打开原生 Session Dashboard，聚焦 session 时自动展开 tag，`<leader>fS` 直接进入当前 session 的 Tag 模式；Dashboard 支持连接、新建、重命名、Session / Tag 回收站、Codex 状态动画和人工进度日志；live Session Trash 保留 7 天且到期时跳过 attached UI / working Codex，Tag Trash 保留 30 天；已结束 Session 的 Tag 以 `ENDED` / `Past Session Notes` 保留且可手动整组删除；日志约 400ms debounce 自动保存；跨 session RPC 总超时 700ms；普通 `tmux ls` 不显示隐藏 host
 - netrw 禁用（`vim.g.loaded_netrw = 1`），文件浏览全走 oil
 
@@ -35,13 +36,14 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 | n | `<leader>vp` | toggle paste mode |
 | n | `<leader>z` | 像 tmux `prefix z` 一样临时放大当前窗口；再按一次恢复原分屏布局 |
 | n | `<C-w>V` / `<C-w>S` | 在右侧 / 下方创建 split 并直接聚焦新窗口；原生小写 `<C-w>v/s` 继续在左侧 / 上方创建并聚焦 |
-| n | `<C-w>c` | 关闭当前普通窗口；当前是任意 terminal / Codex 窗口时拒绝关闭 |
-| n | `<C-w>o` | 关闭其他普通窗口，但保留当前普通窗口和所有 terminal / Codex；从 terminal / Codex 或浮窗执行时不操作 |
-| n | `<leader>d` | detach 当前 Nvim UI，完整保留窗口、buffer、terminal / Codex 进程供稍后恢复 |
+| n | `<C-w>c` | 关闭当前普通窗口；当前是任意 terminal 窗口时拒绝关闭 |
+| n | `<C-w>o` | 关闭其他普通窗口，但保留当前普通窗口和所有 terminal；从 terminal 或浮窗执行时不操作 |
+| n | `<leader>d` | detach 当前 Nvim UI，完整保留窗口、buffer、terminal / agent 进程供稍后恢复 |
 | n | `<leader>yp` | 复制当前 buffer 绝对路径到 `+` 和 `"` |
 | n | `<leader>t` | 在当前上下文目录开完整 terminal buffer 并直接进入输入；若当前 buffer 是 terminal，则沿用该 shell cwd |
 | n/i/t | `<C-/>` / `<C-_>` | toggle 底部普通 shell；首次打开按当前上下文目录启动，显示后自动进入输入，隐藏时保留进程 |
-| n/i/t | `<M-/>` | toggle 底部 `codex --yolo` agent；打开后若最新输出实际可见会自动 check，单纯隐藏未查看的 drawer 不会清未读；首次从 git 根启动，显示后停在 terminal-normal，按 `i` / `a` / `A` 再输入 |
+| n/i/t | `<M-a>` | 打开 agent 选择菜单；`j` / `k` 移动、`Enter` 确认、`Esc` 取消，只显示当前 `PATH` 中可用的 Codex / Grok，选择结果跨 live session 和重启保留 |
+| n/i/t | `<M-/>` | toggle 最近选择的 agent；Codex 用 `codex --yolo`，Grok 用 `grok --yolo`；首次从 git 根启动，显示后停在 terminal-normal，按 `i` / `a` / `A` 再输入；只有 Codex 会自动 check 完成未读 |
 | n/x（Codex terminal） | `gx` | 打开光标下或 visual 选中的绝对/项目相对路径；支持 `:行:列` / `#L行C列`，忽略末尾或紧邻后续正文的中英文标点，复用上一个非 terminal 编辑窗口并跳到定位 |
 | n/i/t | `<M-+>` / `<M-->` / `<M-0>` | 增高 / 降低 / 重置当前底部通道高度；`<M-=>` 也会增高 |
 | n | `<C-d>` / `<C-u>` | 视图下/上滚 6 行，光标尽量留在原位置；可用 `10<C-d>` / `10<C-u>` 临时指定行数 |
@@ -99,7 +101,14 @@ Session 模式中 `j` / `k`、`gg` / `G` 只移动 session，`Enter` 连接，`t
 
 Tag 操作层只是 Dashboard 的 UI 子模式，两层都仍处于 Vim normal mode。进度编辑器是真实 Markdown buffer，完整支持 normal / insert；TextChanged 停止约 400ms 后自动写盘，`InsertLeave` / `BufLeave` 也强制保存，normal mode `q` 保存并返回 Tag 模式，`Ctrl+S` 立即保存。记录按原始 epoch 和本机时区显示；Session 结束后 Tag 仍可按 `P` 作为 Past Notes 查看和编辑，Past Notes 不自动过期。到期检查在新交互式 Nvim 启动、Dashboard 打开或 `R` 时运行。`<leader>fS` 直接进入当前 Session 的 Tag 模式。
 
-### `nvim-telescope/telescope.nvim` (+ `telescope-file-browser.nvim`, `dressing.nvim`)
+### `stevearc/dressing.nvim` — 选择浮窗
+
+- `lazy = false`，确保首次按 `<M-a>` 时 agent 菜单已经接管 `vim.ui.select`
+- agent 菜单固定使用 builtin backend，不显示数字，支持 normal mode 的 `j` / `k`、`Enter`、`Esc`
+- modified buffer 删除确认固定使用 builtin backend、相对安全编辑窗口显示，第一项为 `Cancel`；支持保存后删除和丢弃后删除
+- 其他 `vim.ui.select` 默认不接管；仅保留既有 Session / Tag 删除确认浮窗
+
+### `nvim-telescope/telescope.nvim` (+ `telescope-file-browser.nvim`)
 
 项目根逻辑（`project_root()`）：当前 buffer 文件所在目录的 git 根 → 非 git 时用该目录 → 没文件时用 `getcwd()`。
 
@@ -113,6 +122,10 @@ picker 内自定义键位：
 | `<M-s>` | `select_horizontal`（上下分屏打开） |
 | `<C-h>` | `toggle_hidden`：重开 picker，打开 `hidden = true` + `no_ignore = true`，**保留当前输入** |
 
+buffer 管理器是独立的 Telescope picker，默认 normal mode：`j` / `k` 移动并实时预览，`Enter` 在安全普通编辑窗口打开，`dd` 删除，`q` / `Esc` 取消并恢复发起窗口。clean buffer 直接删除；modified buffer 弹出默认停在 `Cancel` 的三项选择：`Cancel`、`Save and delete`、`Discard changes and delete`；未命名 buffer 选择保存时再询问文件路径。所有 select / split / tab 打开 action 都被收口到重新校验后的普通编辑窗口，quickfix 批量导出在此 picker 内禁用。
+
+picker 的 results / preview / prompt 始终限制在目标普通编辑窗口矩形内；drawer 可见时不会改变其 buffer 或高度。从 terminal / agent 发起会复用同 tab 的普通编辑窗口；没有普通编辑窗口时在 terminal 上方创建 unlisted `nofile` 临时 split，取消时清掉，选中时保留为编辑窗口。目标窗口中途失效会重新路由或创建临时 split，不会回退覆盖 terminal。
+
 file_browser 扩展 opts：`hidden = true`, `grouped = true`（目录排前面）, `respect_gitignore = false`, `hijack_netrw = false`（交给 oil）
 
 全局键位：
@@ -121,7 +134,7 @@ file_browser 扩展 opts：`hidden = true`, `grouped = true`（目录排前面�
 |----|------|
 | `<C-p>` | 普通文件里 `find_files({ cwd = project_root() })`；oil 目录视图里用当前 oil 目录 |
 | `<leader>fg` | `live_grep({ cwd = project_root() })` |
-| `<leader>fb` | `buffers` |
+| `<leader>fb` | 安全 session buffer 管理器（与精确 `:ls<CR>` 相同） |
 | `<leader>fe` | file_browser（项目根，`select_buffer`） |
 | `<leader>fE` | file_browser（`%:p:h`，当前文件目录） |
 
