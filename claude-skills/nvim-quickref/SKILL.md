@@ -23,7 +23,7 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 - `clipboard = unnamedplus`；检测到 `$SSH_TTY` / `$SSH_CONNECTION` / `$XDG_SESSION_TYPE=tty` 时自动切到 **OSC 52**（走终端剪贴板，需要 iTerm2/WezTerm/kitty 等允许剪贴板访问，tmux 需 `set-clipboard on`）
 - `autoread` + `updatetime = 500`（缩短 `CursorHold` 触发间隔让外部改动近实时可见）
 - 外部改动侦测：`FocusGained` / `BufEnter` / `CursorHold{,I}` / `TermLeave` 主动 `checktime`；每个文件 buffer 还会跑一个 `uv.new_fs_event` watcher，被外部改动后弹 WARN `文件被外部修改，已重新加载`
-- terminal mode 使用不闪烁的黄色实心块光标；`<leader>t` 打开完整 terminal buffer；`<C-/>` / `<C-_>` 切换普通 shell 并自动进入输入；`<M-a>` 用 `j` / `k` 菜单选择 Codex 或 Grok，`<M-/>` 切换最近选择的 agent，选择结果保存在本机 Neovim state，多个 live session 和重启后会继续沿用；Codex 以 `codex --yolo`、Grok 以 `grok --yolo` 从首次打开时的 git 根启动，二者各自保留 buffer / 进程并停在 terminal-normal；对应 session 的 Codex drawer 成为前台当前窗口且视口位于最新输出时会自动 check，清除完成未读标记并联动关闭对应 macOS popup；Codex 回合被中断而缺少 `Stop` hook 时，本 session 会通过 title spinner 静默 6 秒或 `TermClose` 自动清除同 turn 的陈旧 working；普通 shell、Codex、Grok 共用底部 drawer；Codex terminal-normal 中的 `gx` 会把光标下或 visual 选中的相对路径按该会话启动根解析，并在上一个编辑窗口打开
+- terminal mode 使用不闪烁的黄色实心块光标；`<leader>t` 打开完整 terminal buffer；macOS `Caps+N` 经 Karabiner 发送 `<C-S-Del>`，可在中文输入源保持开启时从 terminal input / terminal-normal 安全跳回同 tab 普通编辑窗口，不改变 drawer 或输入法；`<C-/>` / `<C-_>` 切换普通 shell 并自动进入输入；`<M-a>` 用 `j` / `k` 菜单选择 Codex 或 Grok，`<M-/>` 切换最近选择的 agent，选择结果保存在本机 Neovim state，多个 live session 和重启后会继续沿用；Codex 以 `codex --yolo`、Grok 以 `grok --yolo` 从首次打开时的 git 根启动，二者各自保留 buffer / 进程并停在 terminal-normal；对应 session 的 Codex drawer 成为前台当前窗口且视口位于最新输出时会自动 check，清除完成未读标记并联动关闭对应 macOS popup；Codex 回合被中断而缺少 `Stop` hook 时，本 session 会通过 title spinner 静默 6 秒或 `TermClose` 自动清除同 turn 的陈旧 working；普通 shell、Codex、Grok 共用底部 drawer；Codex terminal-normal 中的 `gx` 会把光标下或 visual 选中的相对路径按该会话启动根解析，并在上一个编辑窗口打开
 - `<leader>fb` 和精确输入 `:ls<CR>` 打开同一个安全 Telescope session buffer 管理器；terminal / shell / Codex / Grok buffer 永不进入列表或删除范围，`:ls!`、带 flags 的 `:ls`、`:buffers`、`:files` 保持原生
 - Neovim 0.12 live session：交互式 shell 的 `nvim` / `nvim .` / `vim` 由独立的 `dotfiles-nvim-host` tmux server 托管，host 需通过 RPC 探活才会接入 UI；terminal 意外关闭后进程仍存活；`<leader>d` 主动脱离；`<leader>fs` 打开原生 Session Dashboard，聚焦 session 时自动展开 tag，`<leader>fS` 直接进入当前 session 的 Tag 模式；Dashboard 支持连接、新建、重命名、Session / Tag 回收站、Codex 状态动画和人工进度日志；live Session Trash 保留 7 天且到期时跳过 attached UI / working Codex，Tag Trash 保留 30 天；已结束 Session 的 Tag 以 `ENDED` / `Past Session Notes` 保留且可手动整组删除；日志约 400ms debounce 自动保存；跨 session RPC 总超时 700ms；普通 `tmux ls` 不显示隐藏 host
 - netrw 禁用（`vim.g.loaded_netrw = 1`），文件浏览全走 oil
@@ -41,6 +41,7 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 | n | `<leader>d` | detach 当前 Nvim UI，完整保留窗口、buffer、terminal / agent 进程供稍后恢复 |
 | n | `<leader>yp` | 复制当前 buffer 绝对路径到 `+` 和 `"` |
 | n | `<leader>t` | 在当前上下文目录开完整 terminal buffer 并直接进入输入；若当前 buffer 是 terminal，则沿用该 shell cwd |
+| n/t（terminal） | `Caps+N`（Karabiner → `<C-S-Del>`） | 退出 terminal input 并跳回同 tab 最近的普通编辑窗口；避开其他 terminal / agent 和浮窗，保持输入法及 drawer 不变 |
 | n/i/t | `<C-/>` / `<C-_>` | toggle 底部普通 shell；首次打开按当前上下文目录启动，显示后自动进入输入，隐藏时保留进程 |
 | n/i/t | `<M-a>` | 打开 agent 选择菜单；`j` / `k` 移动、`Enter` 确认、`Esc` 取消，只显示当前 `PATH` 中可用的 Codex / Grok，选择结果跨 live session 和重启保留 |
 | n/i/t | `<M-/>` | toggle 最近选择的 agent；Codex 用 `codex --yolo`，Grok 用 `grok --yolo`；首次从 git 根启动，显示后停在 terminal-normal，按 `i` / `a` / `A` 再输入；只有 Codex 会自动 check 完成未读 |

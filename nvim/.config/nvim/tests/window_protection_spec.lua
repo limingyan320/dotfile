@@ -53,14 +53,36 @@ assert_equal(vim.bo[terminal_buf].buftype, "terminal", "test terminal buftype")
 
 local close_mapping = vim.fn.maparg("<C-W>c", "n", false, true)
 local only_mapping = vim.fn.maparg("<C-W>o", "n", false, true)
+local focus_editor_normal = vim.fn.maparg("<C-S-Del>", "n", false, true)
+local focus_editor_terminal = vim.fn.maparg("<C-S-Del>", "t", false, true)
 assert(type(close_mapping.callback) == "function", "protected close mapping is missing")
 assert(type(only_mapping.callback) == "function", "protected only mapping is missing")
+assert(type(focus_editor_normal.callback) == "function", "terminal-normal editor mapping is missing")
+assert(type(focus_editor_terminal.callback) == "function", "terminal-input editor mapping is missing")
+assert_equal(vim.fn.maparg("<F12>", "n"), "", "old terminal navigation carrier should be removed")
 
 local notifications = {}
 local original_notify = vim.notify
 vim.notify = function(message)
   notifications[#notifications + 1] = tostring(message)
 end
+
+local terminal_height = vim.api.nvim_win_get_height(terminal_win)
+focus_editor_normal.callback()
+assert_equal(vim.api.nvim_get_current_win(), second_editor, "terminal-normal <C-S-Del> target")
+assert_equal(vim.api.nvim_win_get_buf(terminal_win), terminal_buf, "terminal-normal <C-S-Del> buffer preservation")
+assert_equal(vim.api.nvim_win_get_height(terminal_win), terminal_height, "terminal-normal <C-S-Del> height preservation")
+assert_equal(vim.fn.maparg("<C-S-Del>", "n"), "", "editor buffers should not own the terminal navigation carrier")
+
+vim.api.nvim_set_current_win(terminal_win)
+focus_editor_terminal.callback()
+assert(vim.wait(500, function()
+  return vim.api.nvim_get_current_win() == second_editor
+end), "terminal-input <C-S-Del> should focus the editor")
+assert_equal(vim.api.nvim_win_get_buf(terminal_win), terminal_buf, "terminal-input <C-S-Del> buffer preservation")
+assert_equal(vim.api.nvim_win_get_height(terminal_win), terminal_height, "terminal-input <C-S-Del> height preservation")
+
+vim.api.nvim_set_current_win(terminal_win)
 
 close_mapping.callback()
 assert(vim.api.nvim_win_is_valid(terminal_win), "<C-w>c should preserve a terminal window")
@@ -118,6 +140,15 @@ assert_equal(regular_window_count(), before_terminal_only, "terminal <C-w>o shou
 assert(vim.api.nvim_win_is_valid(kept_editor), "terminal <C-w>o should preserve the first editor")
 assert(vim.api.nvim_win_is_valid(extra_editor), "terminal <C-w>o should preserve the extra editor")
 assert(notifications[#notifications]:find("普通编辑窗口", 1, true), "terminal only protection notification")
+
+vim.cmd("tabnew")
+local lone_terminal_win = vim.api.nvim_get_current_win()
+local lone_terminal_job = vim.fn.termopen({ vim.o.shell, "-c", "sleep 30" })
+focus_editor_normal.callback()
+assert_equal(vim.api.nvim_get_current_win(), lone_terminal_win, "terminal-only <C-S-Del> should keep its window")
+assert(notifications[#notifications]:find("没有可切换", 1, true), "terminal-only <C-S-Del> notification")
+pcall(vim.fn.jobstop, lone_terminal_job)
+vim.cmd("tabclose!")
 
 vim.notify = original_notify
 pcall(vim.fn.jobstop, terminal_job)

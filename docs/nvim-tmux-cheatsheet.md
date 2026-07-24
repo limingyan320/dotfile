@@ -202,6 +202,7 @@ browser 内（telescope 默认键）：
 |------|------|
 | `Space yp` | 任意 buffer 里复制当前文件的**绝对路径** |
 | `Space t` | 在当前上下文目录开完整 terminal buffer 并直接进入输入；如果当前 buffer 就是 terminal，会沿用该 shell 的 cwd |
+| `Caps + N`（macOS） | 从任意 terminal 输入模式或 terminal-normal 直接跳回当前 tab 最近的普通编辑窗口；保留 terminal / agent、drawer 高度和当前输入法 |
 | `Ctrl+/` | 底部普通 shell 开关；首次按当前上下文目录启动，显示后自动进入输入，隐藏时保留进程（`Ctrl+_` 也兼容） |
 | `Option + A` | 打开 agent 选择菜单；`j` / `k` 移动、`Enter` 确认、`Esc` 取消，只列出当前 `PATH` 中已安装的 Codex / Grok |
 | `Option + /` | 底部最近选择的 agent 开关；Codex 以 `codex --yolo`、Grok 以 `grok --yolo` 从当前上下文的 Git 根启动，显示后停在 terminal-normal，隐藏时保留各自对话进程 |
@@ -209,6 +210,8 @@ browser 内（telescope 默认键）：
 | `Option + +` / `Option + -` / `Option + 0` | 增高 / 降低 / 重置当前底部通道高度 |
 
 > 普通 shell、Codex 和 Grok 各自保留独立的 terminal buffer / 进程，但共用同一个底部 drawer，所以互相切换不会堆叠窗口或丢失 shell / 对话状态。普通 shell 显示后自动进入 terminal 输入；agent 显示后保持 terminal-normal 和原来的阅读位置，需要回复时按 `i` / `a` / `A` 进入输入。普通 shell 默认高 12 行；agent 默认至少 12 行，并尽量占屏幕高度的 45%。normal / insert / terminal 模式下都能直接切换。若把 drawer 窗口改作普通编辑 buffer，下次 toggle 会保留该编辑窗口并另开 drawer。`Option + +` 在部分终端里会发成 `<M-=>`，已一起兼容。
+
+> macOS 的 `Caps + N` 由 Karabiner Caps 层发送 `<C-S-Del>`，因此不依赖中英文输入源。Nvim 只在当前窗口是 terminal / agent 时响应：优先返回刚离开的普通编辑窗口，否则选择同 tab 最近的普通编辑窗口；不会跳进另一个 terminal 或浮窗。当前 tab 没有普通编辑窗口时只提示，不关闭或覆盖 terminal。原生 `Ctrl+\`、`Ctrl+N` 退出 terminal input 的方式仍保留。
 
 > 最近选择保存在 `stdpath("state")/dotfiles-selected-agent`，因此其他 live session 下一次按 `Option + /`、以及 Neovim 重启后都会跟随最新选择。如果保存的 agent 在当前机器不可用，会自动回退到已安装列表中的第一个，默认优先 Codex。新增 agent 时只需在配置中的 agent 注册表和顺序列表各加一项。
 

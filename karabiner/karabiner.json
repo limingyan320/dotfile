@@ -39,6 +39,27 @@
                                         "value": 1
                                     }
                                 ],
+                                "description": "N -> Nvim Editor (Ctrl+Shift+Forward Delete)",
+                                "from": {
+                                    "key_code": "n",
+                                    "modifiers": { "optional": ["any"] }
+                                },
+                                "to": [
+                                    {
+                                        "key_code": "delete_forward",
+                                        "modifiers": ["left_control", "left_shift"]
+                                    }
+                                ],
+                                "type": "basic"
+                            },
+                            {
+                                "conditions": [
+                                    {
+                                        "name": "vim_mode",
+                                        "type": "variable_if",
+                                        "value": 1
+                                    }
+                                ],
                                 "description": "Right Shift + W -> Fast Up",
                                 "from": {
                                     "key_code": "w",
@@ -355,9 +376,10 @@
                                     "key_code": "right_shift",
                                     "modifiers": { "optional": ["any"] }
                                 },
-                                "to": [{ "key_code": "right_shift" }],
+                                "to": [{ "key_code": "right_shift", "lazy": true }],
                                 "to_if_alone": [
                                     {
+                                        "hold_down_milliseconds": 80,
                                         "key_code": "spacebar",
                                         "modifiers": ["left_control"]
                                     }

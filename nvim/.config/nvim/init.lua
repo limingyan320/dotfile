@@ -1709,6 +1709,21 @@ local function codex_target_window()
   return best_win
 end
 
+local function focus_editor_from_terminal()
+  local current_win = vim.api.nvim_get_current_win()
+  if not protected_terminal_window(current_win) then
+    return
+  end
+
+  local target_win = codex_target_window()
+  if not editor_target_window(target_win) then
+    vim.notify("当前 tab 没有可切换的普通编辑窗口", vim.log.levels.WARN)
+    return
+  end
+
+  vim.api.nvim_set_current_win(target_win)
+end
+
 local buffer_picker = require("dotfiles.buffer_picker").setup({
   is_protected_buffer = protected_terminal_buffer,
   is_editor_window = editor_target_window,
@@ -2285,6 +2300,24 @@ map_terminal_action({ "<C-/>", "<C-_>" }, function()
 end, "Toggle shell terminal")
 map_terminal_action({ "<M-/>" }, toggle_selected_agent, "Toggle selected agent")
 map_terminal_action({ "<M-a>" }, select_terminal_agent, "Select terminal agent")
+
+local terminal_navigation_group = vim.api.nvim_create_augroup("DotfilesTerminalNavigation", { clear = true })
+vim.api.nvim_create_autocmd("TermOpen", {
+  group = terminal_navigation_group,
+  callback = function(args)
+    vim.keymap.set("n", "<C-S-Del>", focus_editor_from_terminal, {
+      buffer = args.buf,
+      desc = "Focus editor from terminal",
+    })
+    vim.keymap.set("t", "<C-S-Del>", function()
+      vim.cmd("stopinsert")
+      vim.schedule(focus_editor_from_terminal)
+    end, {
+      buffer = args.buf,
+      desc = "Focus editor from terminal",
+    })
+  end,
+})
 
 for _, key in ipairs({ "<M-+>", "<M-=>" }) do
   vim.keymap.set({ "n", "i", "t" }, key, function()
