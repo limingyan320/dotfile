@@ -202,39 +202,94 @@ assert_true(
   "shell drawer did not hide after the picker test"
 )
 
--- With only a terminal window, cancel removes the temporary split while Enter
--- retains it as an editor and never changes the terminal window's buffer.
+-- A full terminal opened with <leader>t is a first-class session buffer: the
+-- picker uses its window directly, lists it, and switches in both directions.
 vim.cmd("tabnew")
 local only_target = vim.api.nvim_get_current_buf()
 vim.api.nvim_buf_set_name(only_target, "/tmp/dotfiles-buffer-picker-only-target")
 vim.api.nvim_buf_set_lines(only_target, 0, -1, false, { "only target" })
 vim.bo[only_target].modified = false
-vim.cmd("enew")
+local full_terminal = vim.fn.maparg("<Space>t", "n", false, true)
+assert_true(type(full_terminal.callback) == "function", "<leader>t mapping is missing")
+full_terminal.callback()
+assert_true(
+  vim.wait(800, function()
+    return vim.bo.buftype == "terminal"
+  end),
+  "<leader>t did not open a full terminal"
+)
 local only_terminal_buf = vim.api.nvim_get_current_buf()
 local only_terminal_win = vim.api.nvim_get_current_win()
-start_terminal()
+terminal_jobs[#terminal_jobs + 1] = vim.b.terminal_job_id
+vim.cmd("stopinsert")
 picker.open()
-state = wait_for_picker("terminal-only picker did not open")
-local temporary_win = state.target_win
-assert_true(temporary_win ~= only_terminal_win, "terminal-only picker did not create a temporary editor")
-assert_equal(vim.bo[vim.api.nvim_win_get_buf(temporary_win)].buftype, "nofile", "temporary editor buftype")
-assert_equal(vim.api.nvim_win_get_buf(only_terminal_win), only_terminal_buf, "terminal-only source buffer")
-feed("<Esc>")
-wait_for_closed("Esc did not close terminal-only picker")
-assert_true(not vim.api.nvim_win_is_valid(temporary_win), "Esc should remove the temporary editor")
-assert_equal(vim.api.nvim_get_current_win(), only_terminal_win, "Esc should restore the terminal source")
-assert_equal(#vim.api.nvim_tabpage_list_wins(0), 1, "Esc should restore the terminal-only layout")
+state = wait_for_picker("full-terminal picker did not open")
+assert_equal(state.target_win, only_terminal_win, "full terminal should host the picker")
+assert_true(vim.tbl_contains(picker_bufnrs(state), only_terminal_buf), "full terminal missing from picker")
+assert_picker_inside_target(state, "full-terminal picker escaped its source window")
+select_picker_buffer(only_target)
+feed("<CR>")
+wait_for_closed("Enter did not close the full-terminal picker")
+assert_equal(vim.api.nvim_get_current_win(), only_terminal_win, "normal buffer reused full-terminal window")
+assert_equal(vim.api.nvim_win_get_buf(only_terminal_win), only_target, "normal buffer selection")
+assert_true(vim.api.nvim_buf_is_valid(only_terminal_buf), "switching away deleted the full terminal")
 
 picker.open()
 state = wait_for_picker()
-temporary_win = state.target_win
-select_picker_buffer(only_target)
+select_picker_buffer(only_terminal_buf)
 feed("<CR>")
-wait_for_closed("Enter did not close terminal-only picker")
-assert_true(vim.api.nvim_win_is_valid(temporary_win), "Enter should retain the temporary editor")
-assert_equal(vim.api.nvim_get_current_win(), temporary_win, "Enter should focus the retained editor")
-assert_equal(vim.api.nvim_win_get_buf(temporary_win), only_target, "Enter selected buffer")
-assert_equal(vim.api.nvim_win_get_buf(only_terminal_win), only_terminal_buf, "Enter must not replace terminal content")
+wait_for_closed("Enter did not switch back to the full terminal")
+assert_equal(vim.api.nvim_get_current_win(), only_terminal_win, "full-terminal selection focus")
+assert_equal(vim.api.nvim_win_get_buf(only_terminal_win), only_terminal_buf, "full-terminal selection")
+vim.cmd("stopinsert")
+
+picker.open()
+wait_for_picker()
+select_picker_buffer(only_terminal_buf)
+feed("dd")
+assert_true(
+  vim.wait(800, function()
+    return vim.bo.filetype == "DressingSelect"
+  end),
+  "terminal close confirmation did not open"
+)
+local terminal_select_win = vim.api.nvim_get_current_win()
+local terminal_select_config = vim.api.nvim_win_get_config(terminal_select_win)
+assert_equal(vim.api.nvim_get_current_line(), "Cancel", "terminal confirmation default choice")
+assert_equal(terminal_select_config.relative, "win", "terminal confirmation relativity")
+assert_equal(terminal_select_config.win, only_terminal_win, "terminal confirmation parent")
+feed("<Esc>")
+wait_for_picker("cancel did not reopen the terminal buffer picker")
+assert_true(vim.api.nvim_buf_is_valid(only_terminal_buf), "Cancel closed the terminal buffer")
+close_picker()
+
+local saved_terminal_select = vim.ui.select
+local terminal_delete_choice
+vim.ui.select = function(items, opts, callback)
+  assert_equal(items, { "Cancel", "Close terminal" }, "terminal delete choices")
+  assert_equal(opts.kind, "dotfiles_terminal_buffer_delete", "terminal delete choice kind")
+  terminal_delete_choice = callback
+end
+picker.open()
+wait_for_picker()
+select_picker_buffer(only_terminal_buf)
+feed("dd")
+assert_true(
+  vim.wait(400, function()
+    return terminal_delete_choice ~= nil
+  end),
+  "terminal close confirmation callback missing"
+)
+terminal_delete_choice("Close terminal")
+assert_true(
+  vim.wait(800, function()
+    return not vim.api.nvim_buf_is_valid(only_terminal_buf)
+  end),
+  "confirmed terminal close did not delete the buffer"
+)
+wait_for_picker("picker did not reopen after closing the terminal")
+close_picker()
+vim.ui.select = saved_terminal_select
 
 -- Clean deletion is immediate and leaves the picker open on a safe buffer.
 vim.cmd("tabnew")
@@ -392,8 +447,8 @@ vim.fn.delete(unnamed_path)
 vim.ui.select = original_select
 vim.ui.input = original_input
 
--- Closing the host while Telescope is open rehomes the picker to a new editor;
--- selection still cannot replace the surviving terminal window.
+-- Closing the host while Telescope is open rehomes the picker onto a surviving
+-- full terminal, which is a valid session-buffer target.
 vim.cmd("tabnew")
 vim.cmd("file /tmp/dotfiles-buffer-picker-invalid-target")
 vim.api.nvim_buf_set_lines(0, 0, -1, false, { "invalid target selection" })
@@ -410,22 +465,18 @@ wait_for_picker()
 vim.api.nvim_win_close(invalid_target_win, true)
 state = wait_for_picker("picker did not recover from an invalid target window")
 assert_true(state.target_win ~= invalid_target_win, "picker reused the closed target")
-assert_equal(vim.bo[vim.api.nvim_win_get_buf(state.target_win)].buftype, "nofile", "invalid target fallback type")
-assert_equal(
-  vim.api.nvim_win_get_buf(invalid_terminal_win),
-  invalid_terminal_buf,
-  "invalid target changed terminal content"
-)
+assert_equal(state.target_win, invalid_terminal_win, "invalid target did not reuse the full terminal")
+assert_equal(vim.bo[vim.api.nvim_win_get_buf(state.target_win)].buftype, "terminal", "invalid target fallback type")
 assert_picker_inside_target(state, "reopened picker escaped its replacement editor")
 local recovered_target = state.target_win
 feed("<CR>")
 wait_for_closed("Enter did not close the recovered picker")
 assert_equal(vim.api.nvim_get_current_win(), recovered_target, "recovered Enter target")
 assert_equal(vim.api.nvim_win_get_buf(recovered_target), invalid_target_buf, "recovered Enter selection")
-assert_equal(vim.api.nvim_win_get_buf(invalid_terminal_win), invalid_terminal_buf, "recovered Enter replaced terminal")
+assert_true(vim.api.nvim_buf_is_valid(invalid_terminal_buf), "recovered Enter deleted the full terminal")
 
--- A target that is still open but changes into a terminal is equally invalid:
--- the picker must move before another action is requested.
+-- A target that changes into the protected drawer buffer is invalid even though
+-- ordinary full terminals are valid, so the picker moves to another safe window.
 vim.cmd("tabnew")
 vim.cmd("file /tmp/dotfiles-buffer-picker-terminalized-target")
 vim.api.nvim_buf_set_lines(0, 0, -1, false, { "terminalized target selection" })
@@ -439,14 +490,15 @@ start_terminal()
 vim.api.nvim_set_current_win(terminalized_target_win)
 picker.open()
 wait_for_picker()
-vim.api.nvim_win_set_buf(terminalized_target_win, watched_terminal_buf)
-state = wait_for_picker("picker did not leave a target that became terminal")
-assert_true(state.target_win ~= terminalized_target_win, "picker stayed over a target that became terminal")
-assert_equal(vim.bo[vim.api.nvim_win_get_buf(state.target_win)].buftype, "nofile", "terminalized target fallback type")
+vim.api.nvim_win_set_buf(terminalized_target_win, drawer_buf)
+state = wait_for_picker("picker did not leave a target that became the drawer")
+assert_true(state.target_win ~= terminalized_target_win, "picker stayed over a protected drawer")
+assert_equal(state.target_win, watched_terminal_win, "drawer rehome did not reuse the full terminal")
+assert_equal(vim.bo[vim.api.nvim_win_get_buf(state.target_win)].buftype, "terminal", "drawer target fallback type")
 assert_equal(
-  vim.api.nvim_win_get_buf(watched_terminal_win),
-  watched_terminal_buf,
-  "target rehome changed terminal content"
+  vim.api.nvim_win_get_buf(terminalized_target_win),
+  drawer_buf,
+  "target rehome changed drawer content"
 )
 assert_picker_inside_target(state, "terminalized target picker escaped its replacement editor")
 local terminalized_recovery_win = state.target_win
@@ -460,9 +512,9 @@ assert_equal(
   "terminalized target selection"
 )
 assert_equal(
-  vim.api.nvim_win_get_buf(watched_terminal_win),
-  watched_terminal_buf,
-  "terminalized Enter replaced terminal"
+  vim.api.nvim_win_get_buf(terminalized_target_win),
+  drawer_buf,
+  "terminalized Enter replaced drawer"
 )
 
 -- Exact :ls<CR> and <leader>fb share the enhanced picker. Native variants and

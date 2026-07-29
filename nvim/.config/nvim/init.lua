@@ -1200,7 +1200,12 @@ local function toggle_paste_mode()
   vim.notify("paste mode: " .. (vim.opt.paste:get() and "on" or "off"))
 end
 
+local toggle_window_zoom_impl
 local function toggle_window_zoom()
+  if toggle_window_zoom_impl then
+    toggle_window_zoom_impl()
+    return
+  end
   if vim.t.dotfiles_zoomed then
     if #vim.api.nvim_list_tabpages() > 1 then
       vim.cmd("tabclose")
@@ -1299,12 +1304,17 @@ local function project_context_dir(bufnr)
   return dir
 end
 
+local drawer_editor_target
 local function open_oil_from_context()
   local dir = buffer_context_dir(0)
   if not dir or vim.fn.isdirectory(dir) == 0 then
     dir = vim.fn.getcwd()
   end
 
+  local target = drawer_editor_target and drawer_editor_target() or nil
+  if target then
+    vim.api.nvim_set_current_win(target)
+  end
   vim.cmd("Oil " .. vim.fn.fnameescape(dir))
 end
 
@@ -1487,6 +1497,10 @@ local function open_full_terminal()
     dir = vim.fn.getcwd()
   end
 
+  local target = drawer_editor_target and drawer_editor_target() or nil
+  if target then
+    vim.api.nvim_set_current_win(target)
+  end
   vim.cmd("enew")
   vim.fn.termopen(vim.o.shell, { cwd = dir })
   vim.schedule(function()
@@ -1503,6 +1517,10 @@ local terminal_drawer = {
   win_options = nil,
   return_win = nil,
   active = "shell",
+  visible = false,
+  mutation_depth = 0,
+  repair_scheduled = false,
+  shutting_down = false,
   min_height = 5,
   step = 2,
 }
@@ -1591,20 +1609,9 @@ local codex_terminal_activity = require("dotfiles.codex_terminal_activity").setu
   mark_idle = mark_codex_agent_idle,
 })
 
-vim.keymap.set("n", "<C-w>V", function()
-  vim.cmd("rightbelow vsplit")
-end, { desc = "Split right and focus" })
-
-vim.keymap.set("n", "<C-w>S", function()
-  vim.cmd("rightbelow split")
-end, { desc = "Split below and focus" })
-
-local function protected_terminal_buffer(bufnr)
+local function terminal_drawer_buffer(bufnr)
   if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
     return false
-  end
-  if vim.bo[bufnr].buftype == "terminal" then
-    return true
   end
   for _, session in pairs(terminal_sessions) do
     if session.buf == bufnr then
@@ -1614,52 +1621,66 @@ local function protected_terminal_buffer(bufnr)
   return false
 end
 
-local function protected_terminal_window(win)
+local function terminal_drawer_window(win)
   if not win or not vim.api.nvim_win_is_valid(win) then
     return false
   end
-  return protected_terminal_buffer(vim.api.nvim_win_get_buf(win))
+  return win == terminal_drawer.win or terminal_drawer_buffer(vim.api.nvim_win_get_buf(win))
 end
 
-local function close_current_editor_window()
-  local current_win = vim.api.nvim_get_current_win()
-  if protected_terminal_window(current_win) then
-    vim.notify("Terminal/agent 窗口不会被 <C-w>c 关闭", vim.log.levels.INFO)
+local function terminal_window(win)
+  if not win or not vim.api.nvim_win_is_valid(win) then
+    return false
+  end
+  return vim.bo[vim.api.nvim_win_get_buf(win)].buftype == "terminal"
+end
+
+local protected_window_command
+local function run_window_command(command)
+  if protected_window_command then
+    protected_window_command(command)
     return
   end
-  vim.cmd("close")
+  vim.cmd(command)
 end
 
-local function keep_only_current_editor_window()
-  local current_win = vim.api.nvim_get_current_win()
-  if protected_terminal_window(current_win) or vim.api.nvim_win_get_config(current_win).relative ~= "" then
-    vim.notify("请在普通编辑窗口执行 <C-w>o", vim.log.levels.INFO)
-    return
+local function counted_wincmd(key)
+  local count = vim.v.count
+  if count > 0 then
+    return tostring(count) .. "wincmd " .. key
   end
-
-  local failures = {}
-  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-    if win ~= current_win
-      and vim.api.nvim_win_get_config(win).relative == ""
-      and not protected_terminal_window(win)
-    then
-      local ok, err = pcall(vim.api.nvim_win_close, win, false)
-      if not ok then
-        failures[#failures + 1] = tostring(err)
-      end
-    end
-  end
-  if #failures > 0 then
-    vim.notify("部分窗口未能关闭: " .. table.concat(failures, "; "), vim.log.levels.WARN)
-  end
+  return "wincmd " .. key
 end
 
-vim.keymap.set("n", "<C-w>c", close_current_editor_window, {
-  desc = "Close editor window (protect terminals)",
-})
-vim.keymap.set("n", "<C-w>o", keep_only_current_editor_window, {
-  desc = "Keep editor window (protect terminals)",
-})
+local window_commands = {
+  { key = "v", command = "vsplit", desc = "Split left and focus" },
+  { key = "s", command = "split", desc = "Split above and focus" },
+  { key = "V", command = "rightbelow vsplit", desc = "Split right and focus" },
+  { key = "S", command = "rightbelow split", desc = "Split below and focus" },
+  { key = "n", command = "new", desc = "New split" },
+  { key = "c", command = "close", desc = "Close window" },
+  { key = "q", command = "close", desc = "Close window" },
+  { key = "o", command = "only", desc = "Keep only current editor window" },
+}
+for _, item in ipairs(window_commands) do
+  vim.keymap.set("n", "<C-w>" .. item.key, function()
+    run_window_command(item.command)
+  end, { desc = item.desc })
+end
+
+for _, key in ipairs({ "H", "J", "K", "L", "r", "R", "x", "T", "=", "+", "-", "_", "|", ">", "<", "^" }) do
+  vim.keymap.set("n", "<C-w>" .. key, function()
+    run_window_command(counted_wincmd(key))
+  end, { desc = "Editor-only window command " .. key })
+end
+
+local function open_new_buffer()
+  local target = drawer_editor_target and drawer_editor_target() or nil
+  if target then
+    vim.api.nvim_set_current_win(target)
+  end
+  vim.cmd("enew")
+end
 
 local function editor_target_window(win)
   if not win or not vim.api.nvim_win_is_valid(win) or win == terminal_drawer.win then
@@ -1673,6 +1694,19 @@ local function editor_target_window(win)
   end
 
   return vim.bo[vim.api.nvim_win_get_buf(win)].buftype ~= "terminal"
+end
+
+local function buffer_picker_window(win)
+  if not win or not vim.api.nvim_win_is_valid(win) then
+    return false
+  end
+  if vim.api.nvim_win_get_tabpage(win) ~= vim.api.nvim_get_current_tabpage() then
+    return false
+  end
+  if vim.api.nvim_win_get_config(win).relative ~= "" then
+    return false
+  end
+  return not terminal_drawer_buffer(vim.api.nvim_win_get_buf(win))
 end
 
 local function codex_target_window()
@@ -1709,9 +1743,22 @@ local function codex_target_window()
   return best_win
 end
 
+local function buffer_picker_target_window()
+  local editor_win = codex_target_window()
+  if buffer_picker_window(editor_win) then
+    return editor_win
+  end
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    if buffer_picker_window(win) then
+      return win
+    end
+  end
+  return nil
+end
+
 local function focus_editor_from_terminal()
   local current_win = vim.api.nvim_get_current_win()
-  if not protected_terminal_window(current_win) then
+  if not terminal_window(current_win) then
     return
   end
 
@@ -1725,9 +1772,9 @@ local function focus_editor_from_terminal()
 end
 
 local buffer_picker = require("dotfiles.buffer_picker").setup({
-  is_protected_buffer = protected_terminal_buffer,
-  is_editor_window = editor_target_window,
-  find_editor_window = codex_target_window,
+  is_protected_buffer = terminal_drawer_buffer,
+  is_editor_window = buffer_picker_window,
+  find_editor_window = buffer_picker_target_window,
 })
 
 local function terminal_hyperlink_at_cursor()
@@ -2002,6 +2049,27 @@ local function restore_terminal_drawer_window_options(win, options)
   end
 end
 
+local function with_terminal_drawer_mutation(callback)
+  terminal_drawer.mutation_depth = terminal_drawer.mutation_depth + 1
+  local ok, result = xpcall(callback, debug.traceback)
+  terminal_drawer.mutation_depth = terminal_drawer.mutation_depth - 1
+  if not ok then
+    error(result)
+  end
+  return result
+end
+
+local function save_terminal_drawer_view(win)
+  local session = terminal_sessions[terminal_drawer.active]
+  if not session or not session.buf or not vim.api.nvim_buf_is_valid(session.buf) then
+    return
+  end
+  if not win or not vim.api.nvim_win_is_valid(win) or vim.api.nvim_win_get_buf(win) ~= session.buf then
+    return
+  end
+  session.view = vim.api.nvim_win_call(win, vim.fn.winsaveview)
+end
+
 local function visible_terminal_drawer_win()
   local win = terminal_drawer.win
   if not win or not vim.api.nvim_win_is_valid(win) then
@@ -2009,19 +2077,6 @@ local function visible_terminal_drawer_win()
     terminal_drawer.win_options = nil
     return nil
   end
-
-  local session = terminal_sessions[terminal_drawer.active]
-  if not session
-    or not session.buf
-    or not vim.api.nvim_buf_is_valid(session.buf)
-    or vim.api.nvim_win_get_buf(win) ~= session.buf
-  then
-    restore_terminal_drawer_window_options(win, terminal_drawer.win_options)
-    terminal_drawer.win = nil
-    terminal_drawer.win_options = nil
-    return nil
-  end
-
   return win
 end
 
@@ -2102,13 +2157,53 @@ local function terminal_session_height(session)
   if not session.height then
     session.height = session.default_height()
   end
-  session.height = clamp_terminal_height(session.height)
-  return session.height
+  return clamp_terminal_height(session.height)
+end
+
+local function current_tab_editor_windows()
+  local windows = {}
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    if vim.api.nvim_win_get_config(win).relative == "" and win ~= terminal_drawer.win then
+      windows[#windows + 1] = win
+    end
+  end
+  return windows
+end
+
+local function ensure_current_tab_editor_window()
+  local current_win = vim.api.nvim_get_current_win()
+  if
+    vim.api.nvim_win_get_config(current_win).relative == ""
+    and current_win ~= terminal_drawer.win
+  then
+    return current_win
+  end
+
+  local editors = current_tab_editor_windows()
+  if editors[1] then
+    return editors[1]
+  end
+
+  local drawer_win = visible_terminal_drawer_win()
+  if drawer_win and vim.api.nvim_win_get_tabpage(drawer_win) == vim.api.nvim_get_current_tabpage() then
+    return vim.api.nvim_win_call(drawer_win, function()
+      vim.cmd("aboveleft new")
+      return vim.api.nvim_get_current_win()
+    end)
+  end
+  return nil
 end
 
 local function create_terminal_drawer(height)
-  vim.cmd("botright " .. height .. "split")
-  terminal_drawer.win = vim.api.nvim_get_current_win()
+  local anchor = ensure_current_tab_editor_window()
+  if not anchor then
+    return nil
+  end
+
+  terminal_drawer.win = vim.api.nvim_win_call(anchor, function()
+    vim.cmd("botright " .. height .. "split")
+    return vim.api.nvim_get_current_win()
+  end)
   terminal_drawer.win_options = {
     winfixheight = vim.wo[terminal_drawer.win].winfixheight,
     number = vim.wo[terminal_drawer.win].number,
@@ -2122,7 +2217,108 @@ local function create_terminal_drawer(height)
   return terminal_drawer.win
 end
 
-local function open_terminal_session(name)
+local function detach_terminal_drawer_view()
+  local drawer_win = visible_terminal_drawer_win()
+  if not drawer_win then
+    return true
+  end
+
+  save_terminal_drawer_view(drawer_win)
+  local drawer_tab = vim.api.nvim_win_get_tabpage(drawer_win)
+  local regular_windows = 0
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(drawer_tab)) do
+    if vim.api.nvim_win_get_config(win).relative == "" then
+      regular_windows = regular_windows + 1
+    end
+  end
+
+  local ok
+  if regular_windows > 1 then
+    ok = pcall(vim.api.nvim_win_close, drawer_win, false)
+  else
+    local replacement_buf = vim.api.nvim_create_buf(true, false)
+    ok = pcall(vim.api.nvim_win_set_buf, drawer_win, replacement_buf)
+    if ok then
+      restore_terminal_drawer_window_options(drawer_win, terminal_drawer.win_options)
+    end
+  end
+  if ok then
+    terminal_drawer.win = nil
+    terminal_drawer.win_options = nil
+  end
+  return ok
+end
+
+local function terminal_drawer_is_bottom(win)
+  if not win or not vim.api.nvim_win_is_valid(win) then
+    return false
+  end
+  if vim.api.nvim_win_get_tabpage(win) ~= vim.api.nvim_get_current_tabpage() then
+    return false
+  end
+  local layout = vim.fn.winlayout()
+  if layout[1] ~= "col" or type(layout[2]) ~= "table" or #layout[2] < 2 then
+    return false
+  end
+  local last = layout[2][#layout[2]]
+  return last[1] == "leaf" and last[2] == win
+end
+
+local function place_terminal_drawer_at_bottom(win, height)
+  if not terminal_drawer_is_bottom(win) then
+    vim.api.nvim_win_call(win, function()
+      vim.cmd("wincmd J")
+    end)
+  end
+  vim.api.nvim_win_set_height(win, height)
+  vim.wo[win].winfixheight = true
+  vim.wo[win].number = false
+  vim.wo[win].relativenumber = false
+  vim.wo[win].signcolumn = "no"
+end
+
+local function start_terminal_session(session, drawer_win, dir)
+  if session.buf and vim.api.nvim_buf_is_valid(session.buf) then
+    pcall(vim.api.nvim_buf_delete, session.buf, { force = true })
+  end
+  vim.api.nvim_win_call(drawer_win, function()
+    vim.cmd("enew")
+    session.buf = vim.api.nvim_get_current_buf()
+    vim.bo[session.buf].buflisted = false
+    vim.bo[session.buf].bufhidden = "hide"
+    local command = type(session.command) == "function" and session.command() or session.command
+    vim.fn.termopen(command, { cwd = dir })
+  end)
+  session.cwd = dir
+end
+
+local function attach_terminal_session(name, drawer_win, dir, restart_exited)
+  local session = terminal_sessions[name]
+  if not session then
+    return nil
+  end
+
+  if not session.buf or not vim.api.nvim_buf_is_valid(session.buf)
+    or (restart_exited and not terminal_job_running(session.buf))
+  then
+    start_terminal_session(session, drawer_win, dir)
+  else
+    vim.api.nvim_win_set_buf(drawer_win, session.buf)
+  end
+
+  if name == "codex" then
+    configure_codex_buffer(session)
+  end
+  if session.view then
+    pcall(vim.api.nvim_win_call, drawer_win, function()
+      vim.fn.winrestview(session.view)
+    end)
+  end
+  return session
+end
+
+local function open_terminal_session(name, opts)
+  opts = opts or {}
   local session = terminal_sessions[name]
   if not session then
     return
@@ -2138,43 +2334,45 @@ local function open_terminal_session(name)
     dir = vim.fn.getcwd()
   end
 
-  local height = terminal_session_height(session)
-  local drawer_win = visible_terminal_drawer_win()
   local current_win = vim.api.nvim_get_current_win()
-  if current_win ~= drawer_win and editor_target_window(current_win) then
+  local drawer_win = visible_terminal_drawer_win()
+  if opts.update_return ~= false and current_win ~= drawer_win and editor_target_window(current_win) then
     terminal_drawer.return_win = current_win
   end
-  if not drawer_win then
-    drawer_win = create_terminal_drawer(height)
-  end
-
-  terminal_drawer.active = name
-  if terminal_job_running(session.buf) then
-    vim.api.nvim_win_set_buf(drawer_win, session.buf)
-  else
-    if session.buf and vim.api.nvim_buf_is_valid(session.buf) then
-      pcall(vim.api.nvim_buf_delete, session.buf, { force = true })
+  local height = terminal_session_height(session)
+  drawer_win = with_terminal_drawer_mutation(function()
+    local tracked = visible_terminal_drawer_win()
+    if tracked then
+      save_terminal_drawer_view(tracked)
+      if vim.api.nvim_win_get_tabpage(tracked) ~= vim.api.nvim_get_current_tabpage() then
+        detach_terminal_drawer_view()
+        tracked = nil
+      end
     end
-    vim.api.nvim_set_current_win(drawer_win)
-    vim.cmd("enew")
-    session.buf = vim.api.nvim_get_current_buf()
-    vim.bo[session.buf].buflisted = false
-    vim.bo[session.buf].bufhidden = "hide"
-    local command = type(session.command) == "function" and session.command() or session.command
-    vim.fn.termopen(command, { cwd = dir })
-    session.cwd = dir
-  end
 
-  if name == "codex" then
-    configure_codex_buffer(session)
+    terminal_drawer.visible = true
+    terminal_drawer.active = name
+    tracked = tracked or create_terminal_drawer(height)
+    if not tracked then
+      return nil
+    end
+    ensure_current_tab_editor_window()
+    attach_terminal_session(name, tracked, dir, opts.restart_exited ~= false)
+    place_terminal_drawer_at_bottom(tracked, height)
+    return tracked
+  end)
+  if not drawer_win then
+    vim.notify("无法创建底部 terminal drawer", vim.log.levels.ERROR)
+    return
   end
-
-  vim.api.nvim_win_set_height(drawer_win, height)
-  vim.wo[drawer_win].winfixheight = true
 
   local session_buf = session.buf
+  if opts.focus == false then
+    return drawer_win
+  end
   vim.schedule(function()
     if terminal_drawer.win == drawer_win
+      and terminal_drawer.visible
       and terminal_drawer.active == name
       and vim.api.nvim_win_is_valid(drawer_win)
       and vim.api.nvim_win_get_buf(drawer_win) == session_buf
@@ -2183,6 +2381,7 @@ local function open_terminal_session(name)
       vim.cmd(session.start_insert and "startinsert" or "stopinsert")
     end
   end)
+  return drawer_win
 end
 
 local function set_active_terminal_height(height)
@@ -2190,12 +2389,13 @@ local function set_active_terminal_height(height)
   if not session then
     return
   end
-  session.height = clamp_terminal_height(height)
+  session.height = math.max(terminal_drawer.min_height, height)
 
   local drawer_win = visible_terminal_drawer_win()
   if drawer_win then
-    vim.api.nvim_win_set_height(drawer_win, session.height)
-    vim.wo[drawer_win].winfixheight = true
+    with_terminal_drawer_mutation(function()
+      place_terminal_drawer_at_bottom(drawer_win, terminal_session_height(session))
+    end)
   end
 end
 
@@ -2206,38 +2406,133 @@ local function resize_active_terminal(delta)
   end
 end
 
-local function reset_active_terminal_height()
-  local session = terminal_sessions[terminal_drawer.active]
-  if session then
-    set_active_terminal_height(session.default_height())
-  end
-end
-
 local function hide_terminal_drawer()
-  local drawer_win = visible_terminal_drawer_win()
-  if drawer_win then
-    if #vim.api.nvim_tabpage_list_wins(0) == 1 then
-      local replacement_buf = vim.api.nvim_create_buf(true, false)
-      vim.api.nvim_win_set_buf(drawer_win, replacement_buf)
-      restore_terminal_drawer_window_options(drawer_win, terminal_drawer.win_options)
-    else
-      vim.api.nvim_win_close(drawer_win, false)
-    end
-    terminal_drawer.win = nil
-    terminal_drawer.win_options = nil
-    return
-  end
+  terminal_drawer.visible = false
+  with_terminal_drawer_mutation(detach_terminal_drawer_view)
 end
 
 local function toggle_terminal_session(name)
-  local drawer_win = visible_terminal_drawer_win()
-  if drawer_win and terminal_drawer.active == name then
+  if terminal_drawer.visible and terminal_drawer.active == name then
     hide_terminal_drawer()
     return
   end
 
   open_terminal_session(name)
 end
+
+local function ensure_terminal_drawer()
+  if not terminal_drawer.visible or terminal_drawer.shutting_down then
+    return
+  end
+  open_terminal_session(terminal_drawer.active, {
+    focus = false,
+    restart_exited = false,
+    update_return = false,
+  })
+end
+
+local function schedule_terminal_drawer_repair()
+  if
+    not terminal_drawer.visible
+    or terminal_drawer.shutting_down
+    or terminal_drawer.mutation_depth > 0
+    or terminal_drawer.repair_scheduled
+  then
+    return
+  end
+  terminal_drawer.repair_scheduled = true
+  vim.schedule(function()
+    terminal_drawer.repair_scheduled = false
+    if
+      not terminal_drawer.visible
+      or terminal_drawer.shutting_down
+      or terminal_drawer.mutation_depth > 0
+    then
+      return
+    end
+    local ok, err = pcall(ensure_terminal_drawer)
+    if not ok then
+      vim.notify("无法恢复底部 terminal drawer: " .. tostring(err), vim.log.levels.ERROR)
+    end
+  end)
+end
+
+protected_window_command = function(command)
+  local current_win = vim.api.nvim_get_current_win()
+  if terminal_drawer_window(current_win) then
+    vim.notify("底部 shell/agent drawer 不参与窗口布局操作", vim.log.levels.INFO)
+    return
+  end
+
+  local command_ok, command_err
+  with_terminal_drawer_mutation(function()
+    if terminal_drawer.visible then
+      detach_terminal_drawer_view()
+    end
+    command_ok, command_err = pcall(vim.cmd, command)
+    if terminal_drawer.visible then
+      ensure_terminal_drawer()
+    end
+  end)
+  if not command_ok then
+    vim.notify(tostring(command_err), vim.log.levels.WARN)
+  end
+end
+
+drawer_editor_target = function()
+  if not terminal_drawer_window(vim.api.nvim_get_current_win()) then
+    return nil
+  end
+  return codex_target_window() or ensure_current_tab_editor_window()
+end
+
+toggle_window_zoom_impl = function()
+  if terminal_drawer_window(vim.api.nvim_get_current_win()) then
+    vim.notify("请在普通 session window 执行 <leader>z", vim.log.levels.INFO)
+    return
+  end
+  if vim.t.dotfiles_zoomed then
+    if #vim.api.nvim_list_tabpages() > 1 then
+      vim.cmd("tabclose")
+    else
+      vim.notify("没有可恢复的原始布局", vim.log.levels.WARN)
+    end
+    return
+  end
+
+  if #current_tab_editor_windows() <= 1 then
+    vim.notify("当前 tab 只有一个普通 session window", vim.log.levels.INFO)
+    return
+  end
+  vim.cmd("tab split")
+  vim.t.dotfiles_zoomed = true
+  schedule_terminal_drawer_repair()
+end
+
+local terminal_drawer_guard_group = vim.api.nvim_create_augroup("DotfilesTerminalDrawerGuard", { clear = true })
+vim.api.nvim_create_autocmd({
+  "TabEnter",
+  "WinEnter",
+  "WinNew",
+  "WinClosed",
+  "WinResized",
+  "VimResized",
+  "BufWinEnter",
+}, {
+  group = terminal_drawer_guard_group,
+  callback = schedule_terminal_drawer_repair,
+})
+vim.api.nvim_create_autocmd("CmdlineLeave", {
+  group = terminal_drawer_guard_group,
+  pattern = ":",
+  callback = schedule_terminal_drawer_repair,
+})
+vim.api.nvim_create_autocmd("VimLeavePre", {
+  group = terminal_drawer_guard_group,
+  callback = function()
+    terminal_drawer.shutting_down = true
+  end,
+})
 
 local function toggle_selected_agent()
   local name = selected_agent_name()
@@ -2327,7 +2622,6 @@ end
 vim.keymap.set({ "n", "i", "t" }, "<M-->", function()
   resize_active_terminal(-terminal_drawer.step)
 end, { desc = "Decrease active terminal height" })
-vim.keymap.set({ "n", "i", "t" }, "<M-0>", reset_active_terminal_height, { desc = "Reset active terminal height" })
 
 vim.opt.termguicolors = true
 
@@ -2342,7 +2636,7 @@ vim.keymap.set({ "n", "x" }, "<M-Left>", "b", { desc = "Back word" })
 vim.keymap.set({ "n", "x" }, "<M-Right>", "e", { desc = "Forward word end" })
 vim.keymap.set("i", "<M-Left>", "<C-o>b", { desc = "Back word" })
 vim.keymap.set("i", "<M-Right>", "<C-o>e", { desc = "Forward word end" })
-vim.keymap.set("n", "<C-n>", "<cmd>enew<CR>", { desc = "New scratch buffer" })
+vim.keymap.set("n", "<C-n>", open_new_buffer, { desc = "New scratch buffer" })
 
 vim.keymap.set("i", "<C-a>", "<C-o>^", { desc = "Line start nonblank" })
 vim.keymap.set("i", "<C-e>", "<C-o>$", { desc = "Line end" })
@@ -2659,14 +2953,14 @@ require("lazy").setup({
               },
             }
           end
-          if opts.kind == "dotfiles_buffer_delete" then
+          if opts.kind == "dotfiles_buffer_delete" or opts.kind == "dotfiles_terminal_buffer_delete" then
             return {
               backend = "builtin",
               builtin = {
                 relative = "win",
                 show_numbers = false,
                 min_height = 1,
-                max_height = 3,
+                max_height = opts.kind == "dotfiles_terminal_buffer_delete" and 2 or 3,
                 min_width = 1,
                 max_width = 0.9,
               },

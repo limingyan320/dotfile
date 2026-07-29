@@ -40,7 +40,8 @@ local extra_editor_win = vim.api.nvim_get_current_win()
 vim.api.nvim_set_current_win(editor_win)
 only_window.callback()
 assert(not vim.api.nvim_win_is_valid(extra_editor_win), "editor <C-w>o should close another editor")
-assert(vim.api.nvim_win_is_valid(drawer_win), "editor <C-w>o should preserve the Codex drawer")
+drawer_win = assert(vim.fn.win_findbuf(codex_buf)[1], "editor <C-w>o should restore the Codex drawer")
+assert_equal(vim.api.nvim_win_get_buf(drawer_win), codex_buf, "restored Codex drawer buffer")
 
 local original_notify = vim.notify
 vim.notify = function() end

@@ -7,6 +7,7 @@ local state_sequence = 0
 local DELETE_CANCEL = "Cancel"
 local DELETE_SAVE = "Save and delete"
 local DELETE_DISCARD = "Discard changes and delete"
+local TERMINAL_CLOSE = "Close terminal"
 
 local function notify(message, level)
   vim.notify(message, level or vim.log.levels.INFO, { title = "Buffer manager" })
@@ -430,12 +431,47 @@ local function confirm_modified_delete(state, bufnr)
   end)
 end
 
+local function confirm_terminal_delete(state, bufnr)
+  state.preferred_bufnr = bufnr
+  close_picker_only(state)
+
+  local target = ensure_target_window(state)
+  if not target then
+    finish_cancel(state)
+    return
+  end
+  vim.api.nvim_set_current_win(target)
+  vim.ui.select({ DELETE_CANCEL, TERMINAL_CLOSE }, {
+    prompt = "Running terminal: choose close action",
+    kind = "dotfiles_terminal_buffer_delete",
+  }, function(choice)
+    if state.finished or active_state ~= state then
+      return
+    end
+    if choice == TERMINAL_CLOSE then
+      if protected_buffer(bufnr) then
+        notify("目标 terminal buffer 已受保护", vim.log.levels.WARN)
+      else
+        delete_buffer(state, bufnr, true)
+      end
+      reopen_picker(state)
+      return
+    end
+    reopen_picker(state, bufnr)
+  end)
+end
+
 local function delete_selection(state)
   local action_state = require("telescope.actions.state")
   local selection = action_state.get_selected_entry()
   local bufnr = selection and selection.bufnr
   if protected_buffer(bufnr) then
-    notify("没有可删除的普通 buffer", vim.log.levels.WARN)
+    notify("没有可删除的 buffer", vim.log.levels.WARN)
+    return
+  end
+
+  if vim.bo[bufnr].buftype == "terminal" then
+    confirm_terminal_delete(state, bufnr)
     return
   end
 
@@ -456,13 +492,13 @@ local function select_buffer(state)
   local selection = require("telescope.actions.state").get_selected_entry()
   local bufnr = selection and selection.bufnr
   if protected_buffer(bufnr) then
-    notify("没有可打开的普通 buffer", vim.log.levels.WARN)
+    notify("没有可打开的 buffer", vim.log.levels.WARN)
     return
   end
 
   local target = ensure_target_window(state)
   if not target or not valid_editor_window(target) then
-    notify("找不到安全的普通编辑窗口", vim.log.levels.ERROR)
+    notify("找不到安全的目标窗口", vim.log.levels.ERROR)
     return
   end
   if protected_buffer(bufnr) then
@@ -472,7 +508,7 @@ local function select_buffer(state)
 
   local ok, err = pcall(vim.api.nvim_win_set_buf, target, bufnr)
   if not ok or not valid_editor_window(target) then
-    notify("无法在安全编辑窗口打开 buffer: " .. tostring(err), vim.log.levels.ERROR)
+    notify("无法在安全目标窗口打开 buffer: " .. tostring(err), vim.log.levels.ERROR)
     return
   end
 
@@ -485,6 +521,17 @@ local function select_buffer(state)
   close_temporary_windows(state, target)
   if vim.api.nvim_win_is_valid(target) then
     vim.api.nvim_set_current_win(target)
+  end
+  if vim.bo[bufnr].buftype == "terminal" then
+    vim.schedule(function()
+      if
+        vim.api.nvim_win_is_valid(target)
+        and vim.api.nvim_get_current_win() == target
+        and vim.api.nvim_win_get_buf(target) == bufnr
+      then
+        vim.cmd("startinsert")
+      end
+    end)
   end
 end
 
@@ -586,7 +633,7 @@ open_picker = function(state)
   local width = vim.api.nvim_win_get_width(target)
   local height = vim.api.nvim_win_get_height(target)
   if width < 3 or height < 3 then
-    notify("普通编辑窗口太小，无法安全显示 buffer picker", vim.log.levels.ERROR)
+    notify("目标窗口太小，无法安全显示 buffer picker", vim.log.levels.ERROR)
     finish_cancel(state)
     return
   end
