@@ -50,6 +50,7 @@ local dashboard = require("dotfiles.session_dashboard")
 local notes_root = vim.fn.tempname()
 local fake_session = {
   address = vim.fs.joinpath(notes_root, "nvim-1700000000-42-7.sock"),
+  pid = 42,
   current = true,
   name = "dotfiles work",
   project = "dotfiles",
@@ -65,6 +66,7 @@ local fake_session = {
 }
 local second_session = vim.tbl_extend("force", vim.deepcopy(fake_session), {
   address = vim.fs.joinpath(notes_root, "nvim-1700000001-43-8.sock"),
+  pid = 43,
   current = false,
   name = "second session",
   ui_count = 0,
@@ -103,6 +105,8 @@ local sessions = { fake_session, second_session }
 local stopped_current_session
 local detached_current_session
 local stopped_remote_session
+local memory_refreshes = 0
+local mib = 1024 * 1024
 dashboard.setup({
   notes_dir = notes_root,
   discover_sessions = function()
@@ -142,6 +146,43 @@ dashboard.setup({
     end
   end,
   clear_agent = function() end,
+  collect_memory = function(discovered)
+    memory_refreshes = memory_refreshes + 1
+    local result = {
+      metric = "fixture",
+      sessions = {},
+      summary = {
+        nvim = 160 * mib,
+        lsp = 120 * mib,
+        codex = 150 * mib,
+        other = 30 * mib,
+        total = 460 * mib,
+        process_count = 11,
+        session_count = #discovered,
+      },
+      unmanaged = {
+        nvim = 10 * mib,
+        lsp = 0,
+        codex = 0,
+        other = 0,
+        total = 10 * mib,
+        process_count = 1,
+        nvim_process_count = 1,
+      },
+    }
+    for _, session in ipairs(discovered) do
+      local current = session.pid == 42
+      result.sessions[store:session_id(session)] = {
+        nvim = (current and 100 or 50) * mib,
+        lsp = (current and 80 or 40) * mib,
+        codex = (current and 100 or 50) * mib,
+        other = (current and 20 or 10) * mib,
+        total = (current and 300 or 150) * mib,
+        process_count = current and 5 or 4,
+      }
+    end
+    return result
+  end,
   autosave_delay = 20,
 })
 
@@ -151,7 +192,7 @@ local expired_session = vim.tbl_extend("force", vim.deepcopy(second_session), {
   ui_count = 0,
 })
 assert(store:trash_session(expired_session))
-set_trashed_at(store, expired_session, os.time() - 8 * 24 * 60 * 60)
+set_trashed_at(store, expired_session, os.time() - 25 * 60 * 60)
 sessions[#sessions + 1] = expired_session
 assert_equal(dashboard.cleanup_expired(), 1, "expired Session cleanup should start")
 assert(
@@ -171,7 +212,7 @@ local paused_session = vim.tbl_extend("force", vim.deepcopy(second_session), {
   ui_count = 1,
 })
 assert(store:trash_session(paused_session))
-set_trashed_at(store, paused_session, os.time() - 8 * 24 * 60 * 60)
+set_trashed_at(store, paused_session, os.time() - 25 * 60 * 60)
 sessions[#sessions + 1] = paused_session
 assert_equal(dashboard.cleanup_expired(), 0, "attached expired Session cleanup should pause")
 assert(stopped_remote_session == nil, "attached expired Session must not be stopped")
@@ -183,6 +224,8 @@ for index, candidate in ipairs(sessions) do
 end
 assert(store:delete_session_record(paused_session))
 
+local original_columns = vim.o.columns
+vim.o.columns = 180
 dashboard.open()
 local state = assert(dashboard._active_dashboard())
 assert(vim.api.nvim_win_is_valid(state.winid), "dashboard window should be valid")
@@ -193,6 +236,25 @@ assert(window_title(state.winid):find("Nvim Sessions", 1, true), "Session mode t
 vim.api.nvim_exec_autocmds("VimResized", { buffer = state.bufnr, modeline = false })
 local text = dashboard_text(state)
 assert(text:find("CURRENT", 1, true), "dashboard should show current session")
+assert_equal(memory_refreshes, 0, "opening the dashboard must not collect process memory")
+assert(not text:find("MEM 300M", 1, true), "memory columns should stay hidden before M")
+
+local memory_mapping = vim.fn.maparg("M", "n", false, true)
+assert(type(memory_mapping.callback) == "function", "dashboard memory mapping is missing")
+memory_mapping.callback()
+assert_equal(memory_refreshes, 1, "M should collect process memory")
+text = dashboard_text(state)
+assert(text:find("active · fixture", 1, true), "dashboard should show the aggregate memory metric")
+local current_session_row = assert(session_row(state, store:session_id(fake_session)))
+local current_session_line =
+  vim.api.nvim_buf_get_lines(state.bufnr, current_session_row - 1, current_session_row, false)[1]
+assert(current_session_line:find("MEM 300M", 1, true), "memory total should stay on the session row")
+assert(current_session_line:find("N 100M", 1, true), "Nvim memory should stay on the session row")
+assert(current_session_line:find("L 80M", 1, true), "LSP memory should stay on the session row")
+assert(current_session_line:find("C 100M", 1, true), "Codex memory should stay on the session row")
+assert(text:find("U 10M", 1, true), "dashboard should report unmanaged Nvim memory")
+memory_mapping.callback()
+assert_equal(memory_refreshes, 2, "pressing M again should replace the memory snapshot")
 assert(text:find("implemented dashboard", 1, true), "focused session tags should expand automatically")
 assert(not text:find("remote session tag", 1, true), "unfocused session tags should stay collapsed")
 
@@ -210,7 +272,10 @@ assert(text:find("remote session tag", 1, true), "newly focused session tags sho
 assert(not text:find("implemented dashboard", 1, true), "previous session tags should collapse")
 
 local refresh_mapping = vim.fn.maparg("R", "n", false, true)
+local refreshes_before = memory_refreshes
 refresh_mapping.callback()
+assert_equal(memory_refreshes, refreshes_before, "R must not refresh process memory")
+assert(dashboard_text(state):find("MEM 150M", 1, true), "R should preserve the previous memory snapshot")
 local refreshed_row = vim.api.nvim_win_get_cursor(state.winid)[1]
 assert_equal(state.line_map[refreshed_row].session_id, store:session_id(second_session), "refresh kept selection")
 
@@ -379,6 +444,7 @@ dashboard.open({ current_notes = true })
 state = assert(dashboard._active_dashboard())
 assert_equal(state.mode, "tags", "leader fS opens current Tag mode")
 assert_equal(state.focused_session_id, store:session_id(fake_session), "leader fS targets current session")
+assert(not dashboard_text(state):find("active · fixture", 1, true), "reopening should discard the memory snapshot")
 vim.api.nvim_set_current_win(state.winid)
 close_dashboard_mapping = vim.fn.maparg("q", "n", false, true)
 close_dashboard_mapping.callback()
@@ -403,7 +469,7 @@ vim.api.nvim_set_current_win(state.winid)
 recycle_mapping = vim.fn.maparg("T", "n", false, true)
 recycle_mapping.callback()
 assert(dashboard_text(state):find("Recycle Bin", 1, true), "T should show the Session recycle bin")
-assert(dashboard_text(state):find("expires 7d", 1, true), "Session trash should show its seven-day retention")
+assert(dashboard_text(state):find("expires 24h", 1, true), "Session trash should show its 24-hour retention")
 local current_trash_row = assert(session_row(state, store:session_id(fake_session)))
 vim.api.nvim_win_set_cursor(state.winid, { current_trash_row, 0 })
 restore_mapping = vim.fn.maparg("u", "n", false, true)
@@ -438,7 +504,9 @@ vim.api.nvim_set_current_win(state.winid)
 close_dashboard_mapping = vim.fn.maparg("q", "n", false, true)
 close_dashboard_mapping.callback()
 assert(dashboard._active_dashboard() == nil, "dashboard should close after recycle-bin tests")
+assert_equal(memory_refreshes, 2, "reopening dashboards must not collect process memory")
 
+vim.o.columns = original_columns
 vim.fs.rm(notes_root, { recursive = true, force = true })
 print("session dashboard: ok")
 vim.cmd("qa!")

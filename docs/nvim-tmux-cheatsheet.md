@@ -90,11 +90,12 @@ Neovim 0.12 可以把当前 TUI 脱离，但让原来的 Nvim 进程继续在后
 | Session 模式 `t` | 进入聚焦 session 的 Tag 操作模式；浮窗标题会变为 `Session Tags · session 名` |
 | Session 模式 `c`、`r` / `Ctrl+R` | 新建 session / 重命名聚焦的 live session |
 | Session 模式 `dd` | 把聚焦的 live session 移入回收站；Nvim、窗口和 terminal 继续在后台存活，`CURRENT` 只 detach 当前 UI 并返回 shell |
-| Session 模式 `T` / 回收站中 `u` | 切换显示 `Recycle Bin` / 恢复聚焦 session；默认保留 7 天，恢复后可照常按 `Enter` 连接 |
+| Session 模式 `T` / 回收站中 `u` | 切换显示 `Recycle Bin` / 恢复聚焦 session；默认保留 24 小时，恢复后可照常按 `Enter` 连接 |
 | Session 回收站中 `dd` | 二次确认后永久结束聚焦 session；只有这一步才会关闭其中的窗口、未保存修改和 terminal |
 | Session 模式 `P` | 切换显示 `Past Session Notes`；其中 `ENDED` 表示 Session 进程已结束、这里只剩 Tag |
 | `ENDED` 行 `dd` | 二次确认后永久删除该 Session 的全部 Past Notes、metadata 和 Tag Trash |
 | 任意模式 `R` | 重新扫描 live sessions 与 tag，并执行到期回收检查 |
+| Session 模式 `M` | 现场加载并采样进程内存；再次按 `M` 更新快照 |
 | Tag 模式 `j` / `k`、`gg` / `G` | 只在当前 cascade 的 tag 之间移动，日期标题会跳过 |
 | Tag 模式 `Enter` / `e` | 用独立 Markdown buffer 打开选中 tag，停在 normal mode |
 | Tag 模式 `i` | 打开选中 tag 并直接进入 insert mode |
@@ -106,11 +107,13 @@ Neovim 0.12 可以把当前 TUI 脱离，但让原来的 Nvim 进程继续在后
 | Dashboard 内 `/`、`n` / `N` | 使用 Vim 原生搜索查找当前已展开内容、跳到下 / 上一个匹配 |
 | Dashboard 内 `?` | 显示 Dashboard 快捷键帮助 |
 
+Dashboard 默认不加载统计模块、不采样内存，也不预留内存列；`Space fs` 和 `R` 都只处理 session / tag 数据。只有在 Session 模式按 `M` 后，才会现场加载统计模块，并在每个 session 行的 buffer 右侧显示 `MEM` 总量和 `N / L / C / O`（Nvim / LSP / Codex / Other）分类；标题行同时显示全部 live session 与未托管 Nvim 的汇总，`U` 表示不属于隐藏 host 中任何 live session 的孤儿、headless 或测试 Nvim。macOS 使用能覆盖压缩内存的 physical footprint，Linux 使用 PSS + swap，取不到平台指标时回退 RSS。快照保留到本次 Dashboard 关闭，再按 `M` 才重新采样。
+
 Session 列表最左侧有固定 3 格 Codex 状态：流动的 `●·· → ·●· → ··●` 表示 agent 正在工作；闪烁的红色 `!` 表示该 session 已完成但还没有查看。动画只在 Dashboard 打开且至少有一个 UI 接入时刷新；UI 全部脱离后暂停、重连后继续。状态会一直保留到 check；动画刷新不会把 `j` / `k` 的当前选择拉回默认项。Codex 回合被 `Esc` 中断时可能没有 `Stop` hook；每个 Nvim session 会在后台采样自己 Codex terminal 的 title spinner，连续静默 6 秒或 terminal 退出后，仅把同一 turn 仍残留的 `working` 清回 idle，不会覆盖正常完成的红色未读状态。
 
 每个 session 行用高亮 `◆ 数量 · 更新时间` 标出已有 tag；无记录时显示灰色 `◇ 0`。Session 模式始终只 cascade 展开当前焦点：`j` / `k`、鼠标定位或原生搜索跳到另一个 session 行时，旧 cascade 收起、新 cascade 自动展开。展开内容按 `Today` / `Yesterday` / 日期分组，时间来自创建 tag 时保存的 Unix timestamp，再按本机时区换算显示。Tag 模式只是 Dashboard 的操作子模式，两层都仍是 Vim normal mode；记录正文才是普通 Markdown buffer，支持完整 Vim normal / insert 操作。修改停止约 400ms 后自动保存，离开 insert、关闭窗口或离开 buffer 时也会强制保存；编辑器 normal mode 下按 `q` 保存并回到 Tag 模式，`Ctrl+S` 可立即写盘。
 
-日志保存在 `${DOTFILES_NVIM_SESSION_DIR}/notes/<session-id>/`，默认即 `~/.local/state/nvim/sessions/notes/`；一个 tag 对应一个 Markdown 文件，session 名称、项目和回收时间等元数据单独原子写入 JSON。普通 `dd` 只写入回收标记并隐藏 live session，不会立刻停止进程；按 `T`、选中 `TRASHED` 行再按 `u` 即可原样恢复。回收项默认保留 7 天，行内会显示 `expires 7d` 等倒计时；到期后 Nvim、窗口和 terminal 被结束，有 Tag 的记录转入 `Past Session Notes`。Tag 的 `dd` / `x` 会先移动到对应 `trash/`，可在 Tag 模式按 `T` 后用 `u` 恢复，30 天后自动永久删除。
+日志保存在 `${DOTFILES_NVIM_SESSION_DIR}/notes/<session-id>/`，默认即 `~/.local/state/nvim/sessions/notes/`；一个 tag 对应一个 Markdown 文件，session 名称、项目和回收时间等元数据单独原子写入 JSON。普通 `dd` 只写入回收标记并隐藏 live session，不会立刻停止进程；按 `T`、选中 `TRASHED` 行再按 `u` 即可原样恢复。回收项默认保留 24 小时，行内会显示 `expires 24h` 等倒计时；到期后 Nvim、窗口和 terminal 被结束，有 Tag 的记录转入 `Past Session Notes`。Tag 的 `dd` / `x` 会先移动到对应 `trash/`，可在 Tag 模式按 `T` 后用 `u` 恢复，30 天后自动永久删除。
 
 `Past Session Notes` 是已结束 Session 留下的 Markdown 历史，不是完整 Session 备份，也不自动过期。按 `P` 显示后，`ENDED` 行仍可按 `t` 查看或编辑单条 Tag；在 Session 模式对整行按 `dd` 会默认停在 `Cancel`，确认后永久删除该 Session 的全部 Tag、metadata 和 Tag Trash。
 
@@ -126,7 +129,7 @@ live 列表按 `CURRENT`、`DETACHED`、`ATTACHED` 排序，并显示 Codex 状�
 
 当前 session 的逻辑名称也会显示在底部状态栏最左侧，使用独立的青色背景与后面的 Vim 模式区分；未显式命名时同样回退为项目目录名，过长名称会截断。通过 Dashboard 重命名后状态栏会立即更新；不受 live session 系统管理的特殊 Nvim 实例不显示该组件。
 
-普通 live 列表里的 `dd` 不再弹危险确认，也不会执行 `qa!`：目标会进入 `Recycle Bin`，后台 Nvim、buffer、未保存修改和 terminal 都保持原样；如果目标是 `CURRENT`，只 detach 当前 UI 并回到外层 shell。要恢复时从另一个 session 打开 Dashboard，按 `T` 找到它、按 `u`，再按 `Enter` 连接。只有在回收站里再次按 `dd` 才会显示默认停在 `Cancel` 的永久删除确认；确认或 7 天到期后才会结束目标进程，已有 Tag 转为 Past Notes。
+普通 live 列表里的 `dd` 不再弹危险确认，也不会执行 `qa!`：目标会进入 `Recycle Bin`，后台 Nvim、buffer、未保存修改和 terminal 都保持原样；如果目标是 `CURRENT`，只 detach 当前 UI 并回到外层 shell。要恢复时从另一个 session 打开 Dashboard，按 `T` 找到它、按 `u`，再按 `Enter` 连接。只有在回收站里再次按 `dd` 才会显示默认停在 `Cancel` 的永久删除确认；确认或 24 小时到期后才会结束目标进程，已有 Tag 转为 Past Notes。
 
 到期检查会在新交互式 Nvim 启动、Dashboard 打开和按 `R` 时执行，不需要常驻定时任务。仍有 UI 接入或 Codex 状态为 working 的回收 Session 会显示 `expiry paused` 并跳过自动结束；条件解除后，下次检查再处理。
 

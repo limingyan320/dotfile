@@ -8,7 +8,7 @@ local active_dashboard
 local note_states = {}
 local dashboard_namespace = vim.api.nvim_create_namespace("dotfiles_session_dashboard")
 local DAY_SECONDS = 24 * 60 * 60
-local DEFAULT_SESSION_TRASH_TTL = 7 * DAY_SECONDS
+local DEFAULT_SESSION_TRASH_TTL = DAY_SECONDS
 local DEFAULT_TAG_TRASH_TTL = 30 * DAY_SECONDS
 local automatic_session_purges = {}
 
@@ -686,6 +686,14 @@ end
 
 local render_dashboard
 
+local function apply_memory_snapshot(state, sessions)
+  local snapshot = state.memory_snapshot
+  local by_session = snapshot and snapshot.sessions or {}
+  for _, session in ipairs(sessions) do
+    session.memory = by_session[session.session_id]
+  end
+end
+
 local function load_sessions(state)
   purge_expired_tag_trash()
   local ok, sessions = pcall(config.discover_sessions)
@@ -732,6 +740,9 @@ local function load_sessions(state)
       active_sessions[#active_sessions + 1] = session
     end
   end
+
+  state.discovered_sessions = sessions
+  apply_memory_snapshot(state, sessions)
 
   sessions = active_sessions
   state.trashed_session_count = #trashed_sessions
@@ -819,7 +830,7 @@ local function session_expiry_detail(session)
     return "expired"
   elseif session.expiry_remaining < 3600 then
     return ("expires %dm"):format(math.max(1, math.ceil(session.expiry_remaining / 60)))
-  elseif session.expiry_remaining < DAY_SECONDS then
+  elseif session.expiry_remaining <= DAY_SECONDS then
     return ("expires %dh"):format(math.ceil(session.expiry_remaining / 3600))
   end
   return ("expires %dd"):format(math.ceil(session.expiry_remaining / DAY_SECONDS))
@@ -839,6 +850,81 @@ local function agent_indicator(state, session)
   return "   ", "Comment"
 end
 
+local KIB = 1024
+local MIB = 1024 * KIB
+local GIB = 1024 * MIB
+
+local function format_memory(bytes)
+  bytes = math.max(0, tonumber(bytes) or 0)
+  if bytes >= GIB then
+    return bytes < 10 * GIB and ("%.2fG"):format(bytes / GIB) or ("%.1fG"):format(bytes / GIB)
+  elseif bytes >= MIB then
+    return bytes < 10 * MIB and ("%.1fM"):format(bytes / MIB) or ("%.0fM"):format(bytes / MIB)
+  elseif bytes >= KIB then
+    return ("%.0fK"):format(bytes / KIB)
+  end
+  return ("%dB"):format(bytes)
+end
+
+local function memory_total_highlight(memory)
+  local total = tonumber(memory and memory.total) or 0
+  if total >= 2 * GIB then
+    return "DiagnosticError"
+  elseif total >= 512 * MIB then
+    return "DiagnosticWarn"
+  end
+  return "DiagnosticInfo"
+end
+
+local function memory_inline_spans(memory, column_width)
+  local spans = {}
+  if not memory then
+    return { { pad_display("MEM unavailable", column_width), "DiagnosticWarn" } }
+  end
+
+  if column_width >= 50 then
+    spans = {
+      { "MEM ", "Comment" },
+      { pad_display(format_memory(memory.total), 6), memory_total_highlight(memory) },
+      { "  N ", "Comment" },
+      { pad_display(format_memory(memory.nvim), 6), "DiagnosticInfo" },
+      { "  L ", "Comment" },
+      { pad_display(format_memory(memory.lsp), 6), "DiagnosticHint" },
+      { "  C ", "Comment" },
+      { pad_display(format_memory(memory.codex), 6), "DiagnosticOk" },
+      { "  O ", "Comment" },
+      { pad_display(format_memory(memory.other), 6), "Comment" },
+    }
+  elseif column_width >= 36 then
+    spans = {
+      { "M ", "Comment" },
+      { pad_display(format_memory(memory.total), 6), memory_total_highlight(memory) },
+      { " N", "Comment" },
+      { pad_display(format_memory(memory.nvim), 5), "DiagnosticInfo" },
+      { " L", "Comment" },
+      { pad_display(format_memory(memory.lsp), 5), "DiagnosticHint" },
+      { " C", "Comment" },
+      { pad_display(format_memory(memory.codex), 5), "DiagnosticOk" },
+      { " O", "Comment" },
+      { pad_display(format_memory(memory.other), 5), "Comment" },
+    }
+  else
+    spans = {
+      { "MEM ", "Comment" },
+      { pad_display(format_memory(memory.total), math.max(1, column_width - 4)), memory_total_highlight(memory) },
+    }
+  end
+
+  local used = 0
+  for _, span in ipairs(spans) do
+    used = used + vim.fn.strdisplaywidth(span[1])
+  end
+  if used < column_width then
+    spans[#spans + 1] = { string.rep(" ", column_width - used), nil }
+  end
+  return spans
+end
+
 render_dashboard = function(state, preferred_key)
   if not dashboard_valid(state) then
     return
@@ -854,10 +940,37 @@ render_dashboard = function(state, preferred_key)
     end
   end
 
-  append_render_line(output, {
-    { " Live Sessions", "Title" },
-    { ("  %d active"):format(live_count), "Comment" },
-  })
+  local details_width = width >= 95 and 17 or 0
+  local memory_enabled = state.memory_enabled == true
+  local memory_width = memory_enabled and (width >= 150 and 54 or width >= 112 and 38 or 13) or 0
+  local header_spans
+  if memory_enabled then
+    local memory_start = width - memory_width - (details_width > 0 and details_width + 2 or 0)
+    local header_text = truncate_display(
+      (" Live Sessions  %d active · %s"):format(live_count, state.memory_metric or "unavailable"),
+      math.max(1, memory_start - 2)
+    )
+    header_spans = { { header_text, "Title" } }
+    local header_gap = math.max(2, memory_start - vim.fn.strdisplaywidth(header_text))
+    header_spans[#header_spans + 1] = { string.rep(" ", header_gap), nil }
+    vim.list_extend(header_spans, memory_inline_spans(state.memory_summary, memory_width))
+    if details_width > 0 then
+      local unmanaged = state.unmanaged_memory
+      local unmanaged_text = unmanaged and (unmanaged.process_count or 0) > 0
+          and ("U " .. format_memory(unmanaged.total))
+        or (("%dp"):format(state.memory_summary and state.memory_summary.process_count or 0))
+      header_spans[#header_spans + 1] = {
+        "  " .. pad_display(unmanaged_text, details_width),
+        unmanaged and unmanaged.total > 0 and "DiagnosticError" or "Comment",
+      }
+    end
+  else
+    header_spans = {
+      { " Live Sessions", "Title" },
+      { ("  %d active"):format(live_count), "Comment" },
+    }
+  end
+  append_render_line(output, header_spans)
   if live_count == 0 then
     append_render_line(output, { { "   No live sessions", "Comment" } })
   end
@@ -905,17 +1018,17 @@ render_dashboard = function(state, preferred_key)
         session.terminal_count
       )
     local status_width = 8
-    local note_width = 13
-    local details_width = width >= 95 and 17 or 0
-    local name_width = math.max(12, math.min(32, math.floor(width * 0.24)))
-    local fixed_width = 3
+    local note_width = width >= 64 and 13 or 8
+    local fixed_without_name = 3
       + 2
       + status_width
       + 2
-      + name_width
       + 2
       + note_width
+      + (memory_enabled and memory_width + 2 or 0)
       + (details_width > 0 and details_width + 2 or 0)
+    local name_width = math.max(8, math.min(32, math.floor(width * 0.24), width - fixed_without_name))
+    local fixed_width = fixed_without_name + name_width
     local buffer_width = math.max(0, width - fixed_width - 2)
 
     local item = {
@@ -936,6 +1049,14 @@ render_dashboard = function(state, preferred_key)
     if buffer_width > 0 then
       spans[#spans + 1] = { "  ", nil }
       spans[#spans + 1] = { pad_display(session.current_buffer or "", buffer_width), nil }
+    end
+    if memory_enabled then
+      spans[#spans + 1] = { "  ", nil }
+      if session.archived then
+        spans[#spans + 1] = { string.rep(" ", memory_width), nil }
+      else
+        vim.list_extend(spans, memory_inline_spans(session.memory, memory_width))
+      end
     end
     if details_width > 0 then
       spans[#spans + 1] = { "  ", nil }
@@ -1698,6 +1819,35 @@ local function restore_context(state)
   end
 end
 
+local function refresh_memory_snapshot(state)
+  if state.mode ~= "sessions" then
+    vim.notify("请先返回 Session 模式再按 M 统计内存", vim.log.levels.INFO)
+    return
+  end
+
+  local preferred_key = selected_key(state)
+  local ok, result = pcall(config.collect_memory, state.discovered_sessions or {})
+  state.memory_enabled = true
+  if ok and type(result) == "table" then
+    state.memory_snapshot = result
+    state.memory_summary = result.summary
+    state.unmanaged_memory = result.unmanaged
+    state.memory_metric = result.metric or "RSS"
+    state.memory_error = result.error
+  else
+    state.memory_snapshot = nil
+    state.memory_summary = nil
+    state.unmanaged_memory = nil
+    state.memory_metric = "unavailable"
+    state.memory_error = ok and "memory collector returned no result" or tostring(result)
+  end
+  apply_memory_snapshot(state, state.discovered_sessions or {})
+  render_dashboard(state, preferred_key)
+  if state.memory_error then
+    vim.notify("内存统计未完整完成: " .. state.memory_error, vim.log.levels.WARN)
+  end
+end
+
 local function show_help(state)
   local lines
   local title
@@ -1719,7 +1869,8 @@ local function show_help(state)
     lines = {
       "Enter connect · t manage tags · dd move session to Recycle Bin",
       "T Recycle Bin · u restore · P past notes · dd delete past notes",
-      "c create · r rename · R refresh",
+      "M sample memory · MEM total · N/L/C/O Nvim/LSP/Codex/Other · U unmanaged Nvim",
+      "c create · r rename · R refresh sessions",
       "j/k move sessions · / search · q/Esc close",
     }
     title = "Nvim Sessions"
@@ -1836,6 +1987,9 @@ local function set_dashboard_keymaps(state)
     load_sessions(state)
     render_dashboard(state)
   end, "Refresh session dashboard")
+  map("M", function()
+    refresh_memory_snapshot(state)
+  end, "Sample session process memory")
   map("?", function()
     show_help(state)
   end, "Session dashboard help")
@@ -1926,6 +2080,9 @@ function M.setup(opts)
   config.read_agent_state = config.read_agent_state or function()
     return { state = "idle", unread = false }
   end
+  config.collect_memory = config.collect_memory or function(sessions)
+    return require("dotfiles.session_memory").collect(sessions)
+  end
   local session_root = opts.session_dir
   if not session_root or session_root == "" then
     session_root = path_join(vim.fn.stdpath("state"), "nvim", "sessions")
@@ -1997,6 +2154,9 @@ function M.open(opts)
     show_session_trash = false,
     show_tag_trash = false,
     trashed_session_count = 0,
+    discovered_sessions = {},
+    memory_enabled = false,
+    memory_snapshot = nil,
     animation_frame = 1,
     timer_closed = false,
   }
