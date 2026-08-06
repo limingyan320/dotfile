@@ -1528,6 +1528,7 @@ local terminal_drawer = {
 local terminal_sessions = {
   shell = {
     buf = nil,
+    drawer = true,
     command = function()
       return vim.o.shell
     end,
@@ -1539,7 +1540,8 @@ local terminal_sessions = {
   },
   codex = {
     buf = nil,
-    command = { "codex", "--yolo" },
+    drawer = false,
+    command = { "codex", "--yolo", "--no-alt-screen" },
     label = "Codex",
     executable = "codex",
     is_agent = true,
@@ -1551,6 +1553,7 @@ local terminal_sessions = {
   },
   grok = {
     buf = nil,
+    drawer = true,
     command = { "grok", "--yolo" },
     label = "Grok",
     executable = "grok",
@@ -1614,7 +1617,7 @@ local function terminal_drawer_buffer(bufnr)
     return false
   end
   for _, session in pairs(terminal_sessions) do
-    if session.buf == bufnr then
+    if session.drawer and session.buf == bufnr then
       return true
     end
   end
@@ -1740,7 +1743,21 @@ local function codex_target_window()
     end
   end
 
-  return best_win
+  if best_win then
+    return best_win
+  end
+
+  local current_win = vim.api.nvim_get_current_win()
+  local codex = terminal_sessions.codex
+  if codex.buf
+    and vim.api.nvim_buf_is_valid(codex.buf)
+    and vim.api.nvim_win_get_buf(current_win) == codex.buf
+    and vim.api.nvim_win_get_config(current_win).relative == ""
+  then
+    return current_win
+  end
+
+  return nil
 end
 
 local function buffer_picker_target_window()
@@ -1764,6 +1781,15 @@ local function focus_editor_from_terminal()
 
   local target_win = codex_target_window()
   if not editor_target_window(target_win) then
+    local codex = terminal_sessions.codex
+    if codex.buf == vim.api.nvim_get_current_buf()
+      and codex.return_buf
+      and vim.api.nvim_buf_is_valid(codex.return_buf)
+      and codex.return_buf ~= codex.buf
+    then
+      vim.api.nvim_win_set_buf(current_win, codex.return_buf)
+      return
+    end
     vim.notify("当前 tab 没有可切换的普通编辑窗口", vim.log.levels.WARN)
     return
   end
@@ -2023,8 +2049,78 @@ local function open_codex_reference(session, reference)
   end
 end
 
+local function codex_line_has_marker(line, marker)
+  local text = line:gsub("^%s+", "")
+  return text == marker or vim.startswith(text, marker .. " ")
+end
+
+local function codex_response_starts(bufnr)
+  local starts = {}
+  local waiting_for_response = false
+  for line_number, line in ipairs(vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)) do
+    if codex_line_has_marker(line, "›") then
+      waiting_for_response = true
+    elseif waiting_for_response and codex_line_has_marker(line, "•") then
+      starts[#starts + 1] = line_number
+      waiting_for_response = false
+    end
+  end
+  return starts
+end
+
+local function jump_codex_response(session, direction)
+  if vim.api.nvim_get_current_buf() ~= session.buf then
+    return
+  end
+
+  local current_line = vim.api.nvim_win_get_cursor(0)[1]
+  local remaining = vim.v.count1
+  local target
+  local starts = codex_response_starts(session.buf)
+  if direction < 0 then
+    for index = #starts, 1, -1 do
+      if starts[index] < current_line then
+        remaining = remaining - 1
+        if remaining == 0 then
+          target = starts[index]
+          break
+        end
+      end
+    end
+  else
+    for _, line_number in ipairs(starts) do
+      if line_number > current_line then
+        remaining = remaining - 1
+        if remaining == 0 then
+          target = line_number
+          break
+        end
+      end
+    end
+  end
+
+  if not target then
+    vim.notify(direction < 0 and "没有更早的 Codex 回答" or "没有更晚的 Codex 回答", vim.log.levels.INFO)
+    return
+  end
+
+  vim.api.nvim_win_set_cursor(0, { target, 0 })
+  vim.cmd("normal! zt")
+  local view = vim.fn.winsaveview()
+  local changedtick = vim.api.nvim_buf_get_changedtick(session.buf)
+  session.scroll_lock = { view = view, changedtick = changedtick }
+  session.scroll_changedtick = changedtick
+  session.view = vim.deepcopy(view)
+end
+
 local function configure_codex_buffer(session)
   codex_terminal_activity:attach(session.buf)
+  vim.keymap.set("n", "[a", function()
+    jump_codex_response(session, -1)
+  end, { buffer = session.buf, desc = "Previous Codex response" })
+  vim.keymap.set("n", "]a", function()
+    jump_codex_response(session, 1)
+  end, { buffer = session.buf, desc = "Next Codex response" })
   vim.keymap.set("n", "gx", function()
     open_codex_reference(session)
   end, { buffer = session.buf, desc = "Open Codex path in editor window" })
@@ -2037,6 +2133,22 @@ local function configure_codex_buffer(session)
     end
     open_codex_reference(session, reference)
   end, { buffer = session.buf, desc = "Open selected Codex path in editor window" })
+end
+
+local function configure_agent_buffer(session)
+  vim.keymap.set("n", "G", function()
+    local count = vim.v.count
+    local last_line = vim.api.nvim_buf_line_count(session.buf)
+    local unlock = count == 0 or count >= last_line
+    if unlock then
+      session.scroll_lock = nil
+      session.scroll_changedtick = vim.api.nvim_buf_get_changedtick(session.buf)
+    end
+    vim.cmd("normal! " .. (count > 0 and tostring(count) or "") .. "G")
+    if unlock and vim.api.nvim_get_current_buf() == session.buf then
+      session.view = vim.fn.winsaveview()
+    end
+  end, { buffer = session.buf, desc = "Go to latest agent output" })
 end
 
 local function restore_terminal_drawer_window_options(win, options)
@@ -2067,6 +2179,10 @@ local function save_terminal_drawer_view(win)
   if not win or not vim.api.nvim_win_is_valid(win) or vim.api.nvim_win_get_buf(win) ~= session.buf then
     return
   end
+  if session.is_agent and session.scroll_lock and session.scroll_lock.view then
+    session.view = vim.deepcopy(session.scroll_lock.view)
+    return
+  end
   session.view = vim.api.nvim_win_call(win, vim.fn.winsaveview)
 end
 
@@ -2092,6 +2208,120 @@ local function terminal_window_is_at_latest_output(win, bufnr)
   return last_visible_line >= vim.api.nvim_buf_line_count(bufnr)
 end
 
+local function agent_session_for_buffer(bufnr)
+  for name, session in pairs(terminal_sessions) do
+    if session.is_agent and session.buf == bufnr then
+      return name, session
+    end
+  end
+  return nil, nil
+end
+
+local function current_agent_window()
+  local win = vim.api.nvim_get_current_win()
+  local name, session = agent_session_for_buffer(vim.api.nvim_win_get_buf(win))
+  if not session then
+    return nil, nil
+  end
+  if session.drawer then
+    local drawer_win = visible_terminal_drawer_win()
+    if win ~= drawer_win or terminal_drawer.active ~= name then
+      return nil, nil
+    end
+  end
+  return session, win
+end
+
+local function clear_agent_scroll_lock(session)
+  if session then
+    session.scroll_lock = nil
+  end
+end
+
+local function restore_agent_scroll_lock(session, win)
+  local lock = session and session.scroll_lock
+  if not lock or lock.restoring or not lock.view then
+    return
+  end
+  if not win or not vim.api.nvim_win_is_valid(win) or vim.api.nvim_win_get_buf(win) ~= session.buf then
+    return
+  end
+
+  lock.restoring = true
+  local view = vim.deepcopy(lock.view)
+  local last_line = math.max(1, vim.api.nvim_buf_line_count(session.buf))
+  view.lnum = math.max(1, math.min(last_line, tonumber(view.lnum) or 1))
+  view.topline = math.max(1, math.min(last_line, tonumber(view.topline) or view.lnum))
+  local ok = pcall(vim.api.nvim_win_call, win, function()
+    vim.fn.winrestview(view)
+  end)
+  if ok then
+    local restored = vim.api.nvim_win_call(win, vim.fn.winsaveview)
+    lock.view = restored
+    session.view = vim.deepcopy(restored)
+  end
+  lock.changedtick = vim.api.nvim_buf_get_changedtick(session.buf)
+  session.scroll_changedtick = lock.changedtick
+  lock.restoring = false
+end
+
+local function schedule_agent_scroll_restore(session)
+  local lock = session and session.scroll_lock
+  if not lock or lock.restore_scheduled then
+    return
+  end
+  lock.restore_scheduled = true
+  vim.schedule(function()
+    if session.scroll_lock ~= lock then
+      return
+    end
+    lock.restore_scheduled = false
+    for _, win in ipairs(vim.fn.win_findbuf(session.buf)) do
+      if vim.api.nvim_win_is_valid(win) then
+        restore_agent_scroll_lock(session, win)
+        break
+      end
+    end
+  end)
+end
+
+local function update_agent_scroll_lock()
+  local session, win = current_agent_window()
+  if not session then
+    return
+  end
+  if vim.api.nvim_get_mode().mode:sub(1, 1) == "t" then
+    clear_agent_scroll_lock(session)
+    return
+  end
+
+  local changedtick = vim.api.nvim_buf_get_changedtick(session.buf)
+  local lock = session.scroll_lock
+  if lock and lock.restoring then
+    return
+  end
+  if lock and changedtick ~= lock.changedtick then
+    schedule_agent_scroll_restore(session)
+    return
+  end
+  if not lock and session.scroll_changedtick ~= changedtick then
+    session.scroll_changedtick = changedtick
+    return
+  end
+  if terminal_window_is_at_latest_output(win, session.buf) then
+    clear_agent_scroll_lock(session)
+    session.view = vim.api.nvim_win_call(win, vim.fn.winsaveview)
+    return
+  end
+
+  local view = vim.api.nvim_win_call(win, vim.fn.winsaveview)
+  session.scroll_lock = {
+    view = view,
+    changedtick = changedtick,
+  }
+  session.view = vim.deepcopy(view)
+end
+
 function _G.dotfiles_codex_is_observed()
   if vim.g.dotfiles_ui_focused ~= 1 or #vim.api.nvim_list_uis() == 0 then
     return false
@@ -2100,11 +2330,12 @@ function _G.dotfiles_codex_is_observed()
   if not session.buf or not vim.api.nvim_buf_is_valid(session.buf) then
     return false
   end
-  local win = visible_terminal_drawer_win()
-  return win ~= nil
-    and vim.api.nvim_get_current_win() == win
-    and vim.api.nvim_win_get_buf(win) == session.buf
-    and terminal_window_is_at_latest_output(win, session.buf)
+  local win = vim.api.nvim_get_current_win()
+  if vim.api.nvim_win_get_buf(win) ~= session.buf then
+    return false
+  end
+  restore_agent_scroll_lock(session, win)
+  return terminal_window_is_at_latest_output(win, session.buf)
 end
 
 local codex_observation_scheduled = false
@@ -2133,6 +2364,32 @@ local codex_observation_group = vim.api.nvim_create_augroup("dotfiles_codex_obse
 vim.api.nvim_create_autocmd({ "UIEnter", "FocusGained", "WinEnter", "BufEnter", "WinScrolled" }, {
   group = codex_observation_group,
   callback = schedule_codex_observation,
+})
+
+local agent_scroll_lock_group = vim.api.nvim_create_augroup("DotfilesAgentScrollLock", { clear = true })
+vim.api.nvim_create_autocmd({ "CursorMoved", "WinScrolled" }, {
+  group = agent_scroll_lock_group,
+  callback = update_agent_scroll_lock,
+})
+vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedT" }, {
+  group = agent_scroll_lock_group,
+  callback = function(args)
+    local _, session = agent_session_for_buffer(args.buf)
+    if not session then
+      return
+    end
+    session.scroll_changedtick = vim.api.nvim_buf_get_changedtick(args.buf)
+    if session.scroll_lock then
+      schedule_agent_scroll_restore(session)
+    end
+  end,
+})
+vim.api.nvim_create_autocmd("TermEnter", {
+  group = agent_scroll_lock_group,
+  callback = function(args)
+    local _, session = agent_session_for_buffer(args.buf)
+    clear_agent_scroll_lock(session)
+  end,
 })
 
 local function terminal_job_running(bufnr)
@@ -2277,18 +2534,22 @@ local function place_terminal_drawer_at_bottom(win, height)
   vim.wo[win].signcolumn = "no"
 end
 
-local function start_terminal_session(session, drawer_win, dir)
+local function start_terminal_session(session, target_win, dir)
   if session.buf and vim.api.nvim_buf_is_valid(session.buf) then
     pcall(vim.api.nvim_buf_delete, session.buf, { force = true })
   end
-  vim.api.nvim_win_call(drawer_win, function()
+  session.view = nil
+  session.scroll_lock = nil
+  session.scroll_changedtick = nil
+  vim.api.nvim_win_call(target_win, function()
     vim.cmd("enew")
     session.buf = vim.api.nvim_get_current_buf()
-    vim.bo[session.buf].buflisted = false
+    vim.bo[session.buf].buflisted = not session.drawer
     vim.bo[session.buf].bufhidden = "hide"
     local command = type(session.command) == "function" and session.command() or session.command
     vim.fn.termopen(command, { cwd = dir })
   end)
+  session.scroll_changedtick = vim.api.nvim_buf_get_changedtick(session.buf)
   session.cwd = dir
 end
 
@@ -2309,9 +2570,13 @@ local function attach_terminal_session(name, drawer_win, dir, restart_exited)
   if name == "codex" then
     configure_codex_buffer(session)
   end
-  if session.view then
+  if session.is_agent then
+    configure_agent_buffer(session)
+  end
+  local saved_view = session.scroll_lock and session.scroll_lock.view or session.view
+  if saved_view then
     pcall(vim.api.nvim_win_call, drawer_win, function()
-      vim.fn.winrestview(session.view)
+      vim.fn.winrestview(saved_view)
     end)
   end
   return session
@@ -2420,6 +2685,95 @@ local function toggle_terminal_session(name)
   open_terminal_session(name)
 end
 
+local function full_agent_window(session)
+  if not session.buf or not vim.api.nvim_buf_is_valid(session.buf) then
+    return nil
+  end
+  for _, win in ipairs(vim.fn.win_findbuf(session.buf)) do
+    if vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_config(win).relative == "" then
+      return win
+    end
+  end
+  return nil
+end
+
+local function full_agent_target_window()
+  local current_win = vim.api.nvim_get_current_win()
+  if terminal_drawer_window(current_win) then
+    return codex_target_window() or ensure_current_tab_editor_window()
+  end
+  if vim.api.nvim_win_get_config(current_win).relative == "" then
+    return current_win
+  end
+  return codex_target_window() or ensure_current_tab_editor_window()
+end
+
+local function hide_full_agent_session(session, win)
+  local view = session.scroll_lock and session.scroll_lock.view
+    or vim.api.nvim_win_call(win, vim.fn.winsaveview)
+  session.view = vim.deepcopy(view)
+
+  local replacement = session.return_buf
+  if not replacement or not vim.api.nvim_buf_is_valid(replacement) or replacement == session.buf then
+    replacement = vim.api.nvim_create_buf(true, false)
+  end
+  vim.api.nvim_win_set_buf(win, replacement)
+end
+
+local function toggle_full_agent_session(name)
+  local session = terminal_sessions[name]
+  if not session or session.drawer then
+    return
+  end
+  if vim.fn.executable(session.executable) ~= 1 then
+    vim.notify(session.executable .. " 不在 PATH 中，无法启动 agent", vim.log.levels.ERROR)
+    return
+  end
+
+  local current_win = vim.api.nvim_get_current_win()
+  if session.buf
+    and vim.api.nvim_buf_is_valid(session.buf)
+    and vim.api.nvim_win_get_buf(current_win) == session.buf
+  then
+    hide_full_agent_session(session, current_win)
+    return
+  end
+
+  local visible_win = full_agent_window(session)
+  if visible_win then
+    if terminal_drawer.visible then
+      hide_terminal_drawer()
+    end
+    vim.api.nvim_set_current_win(visible_win)
+    vim.cmd("stopinsert")
+    return
+  end
+
+  local target_win = full_agent_target_window()
+  local source_buf = vim.api.nvim_win_get_buf(target_win)
+  local dir = session.context_dir(source_buf)
+  if not dir or vim.fn.isdirectory(dir) == 0 then
+    dir = vim.fn.getcwd()
+  end
+  session.return_buf = source_buf
+
+  if terminal_drawer.visible then
+    hide_terminal_drawer()
+  end
+  vim.api.nvim_set_current_win(target_win)
+  attach_terminal_session(name, target_win, dir, true)
+  vim.schedule(function()
+    if vim.api.nvim_win_is_valid(target_win)
+      and session.buf
+      and vim.api.nvim_buf_is_valid(session.buf)
+      and vim.api.nvim_win_get_buf(target_win) == session.buf
+    then
+      vim.api.nvim_set_current_win(target_win)
+      vim.cmd("stopinsert")
+    end
+  end)
+end
+
 local function ensure_terminal_drawer()
   if not terminal_drawer.visible or terminal_drawer.shutting_down then
     return
@@ -2460,7 +2814,7 @@ end
 protected_window_command = function(command)
   local current_win = vim.api.nvim_get_current_win()
   if terminal_drawer_window(current_win) then
-    vim.notify("底部 shell/agent drawer 不参与窗口布局操作", vim.log.levels.INFO)
+    vim.notify("底部 shell/Grok drawer 不参与窗口布局操作", vim.log.levels.INFO)
     return
   end
 
@@ -2540,7 +2894,12 @@ local function toggle_selected_agent()
     vim.notify("没有找到可用的 agent CLI", vim.log.levels.ERROR)
     return
   end
-  toggle_terminal_session(name)
+  local session = terminal_sessions[name]
+  if session.drawer then
+    toggle_terminal_session(name)
+  else
+    toggle_full_agent_session(name)
+  end
 end
 
 local function select_terminal_agent()

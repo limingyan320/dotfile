@@ -72,7 +72,7 @@
 | `Ctrl+W c/q` | 关闭当前普通窗口；`Space t` 完整 terminal 也按普通窗口关闭，底部 drawer 内拒绝执行 |
 | `Ctrl+W o` | 只保留当前普通 session window 和底部 drawer；可从 `Space t` 完整 terminal 执行，drawer 内拒绝执行 |
 
-> 黑名单只保护底部普通 shell / agent drawer，不按 `buftype=terminal` 一刀切。drawer 永远是当前 tab 最后一行布局中的全宽底栏；从上方执行创建、移动、轮换、交换、缩放、关闭等窗口操作时会先暂时摘下 drawer，完成后再恢复，所以操作只作用于普通 session windows。从 drawer 内执行这些 `Ctrl+W` 操作会拒绝；手工 `:close`、`:only`、`:resize` 或拖动边界也会被 guardian 恢复。小写 `Ctrl+W h/j/k/l/w/p` 仍可用于聚焦窗口。
+> 黑名单只保护底部普通 shell / Grok drawer，不按 `buftype=terminal` 一刀切。Codex 和 `Space t` 完整 terminal 都是普通 session window / buffer，可正常创建、移动、轮换、交换、缩放或关闭。drawer 永远是当前 tab 最后一行布局中的全宽底栏；从上方执行布局操作时会先暂时摘下 drawer，完成后再恢复。从 drawer 内执行对应 `Ctrl+W` 操作会拒绝；手工 `:close`、`:only`、`:resize` 或拖动边界也会被 guardian 恢复。
 
 ---
 
@@ -204,20 +204,23 @@ browser 内（telescope 默认键）：
 |------|------|
 | `Space yp` | 任意 buffer 里复制当前文件的**绝对路径** |
 | `Space t` | 在当前上下文目录开完整 terminal buffer 并直接进入输入；如果当前 buffer 就是 terminal，会沿用该 shell 的 cwd；该 terminal 会作为普通 session buffer 出现在 `Space fb` / 精确 `:ls` 中 |
-| `Caps + N`（macOS） | 从任意 terminal 输入模式或 terminal-normal 直接跳回当前 tab 最近的普通编辑窗口；保留 terminal / agent、drawer 高度和当前输入法 |
+| `Caps + N`（macOS） | 从任意 terminal 输入模式或 terminal-normal 跳回当前 tab 最近的普通编辑窗口；完整 Codex 没有其他编辑窗口时恢复它替换前的 buffer |
 | `Ctrl+/` | 底部普通 shell 开关；首次按当前上下文目录启动，显示后自动进入输入，隐藏时保留进程（`Ctrl+_` 也兼容） |
 | `Option + A` | 打开 agent 选择菜单；`j` / `k` 移动、`Enter` 确认、`Esc` 取消，只列出当前 `PATH` 中已安装的 Codex / Grok |
-| `Option + /` | 底部最近选择的 agent 开关；Codex 以 `codex --yolo`、Grok 以 `grok --yolo` 从当前上下文的 Git 根启动，显示后停在 terminal-normal，隐藏时保留各自对话进程 |
+| `Option + /` | 最近选择的 agent 开关；Codex 在当前普通窗口显示 / 隐藏专属 listed full terminal，再按恢复原 buffer；Grok 仍切换底部 drawer；二者隐藏时都保留进程 |
+| `[a` / `]a`（Codex terminal normal） | 跳到上 / 下一条 Codex 回答开头并置顶；连续按可逐轮翻阅，支持 `2[a` / `2]a` 数字前缀 |
 | `gx`（Codex terminal normal/visual） | 打开光标下或 visual 选中的绝对/项目相对路径；支持 `:行:列` / `#L行C列`，忽略末尾或紧邻后续正文的中英文标点，在上一个非 terminal 编辑窗口跳转 |
-| `Option + +` / `Option + -` | 增高 / 降低当前底部 drawer；这是唯一允许的高度调整入口 |
+| `Option + +` / `Option + -` | 增高 / 降低当前底部 shell / Grok drawer；这是唯一允许的高度调整入口 |
 
-> 普通 shell、Codex 和 Grok 各自保留独立的 terminal buffer / 进程，但共用一个逻辑 drawer，所以互相切换不会堆叠窗口或丢失 shell / 对话状态。drawer 显示时始终跟随当前 tab、全宽贴底，并在窗口布局被外部命令改动后自动恢复；只有 `Ctrl+/` / `Ctrl+_` 和 `Option+/` 能改变它的显示/隐藏状态。普通 shell 显示后自动进入 terminal 输入；agent 显示后保持 terminal-normal 和原来的阅读位置，需要回复时按 `i` / `a` / `A` 进入输入。普通 shell 默认高 12 行；agent 默认至少 12 行，并尽量占屏幕高度的 45%。normal / insert / terminal 模式下都能直接切换。`Option + +` 在部分终端里会发成 `<M-=>`，已一起兼容。
+> Codex 不再属于 drawer：首次按 `Option+/` 会在当前普通窗口启动，若 shell / Grok drawer 正显示会先自动收起；再次按回到它替换前的 buffer，进程和阅读位置继续保留。Codex 已显示在其他普通窗口时，`Option+/` 只聚焦那个窗口。它和 `Space t` 完整 terminal 一样可进入 `Space fb` / `:ls`、参与分屏和窗口操作、用 `dd` 确认后结束。底部 drawer 只保留普通 shell 与 Grok，继续全宽贴底并受 guardian 保护。
+
+> Codex 和 Grok 显示后都保持 terminal-normal，需要回复时按 `i` / `a` / `A`。滚离最新输出后会锁定 cursor / topline，后续异步输出不会抢走阅读位置，手动滚到底部、按 `G` 或进入 terminal-input 才解除。`Option + +` / `Option + -` 只调整底部 shell / Grok drawer，Codex 的大小直接由它所在的普通窗口决定。
 
 > macOS 的 `Caps + N` 由 Karabiner Caps 层发送 `<C-S-Del>`，因此不依赖中英文输入源。Nvim 只在当前窗口是 terminal / agent 时响应：优先返回刚离开的普通编辑窗口，否则选择同 tab 最近的普通编辑窗口；不会跳进另一个 terminal 或浮窗。当前 tab 没有普通编辑窗口时只提示，不关闭或覆盖 terminal。原生 `Ctrl+\`、`Ctrl+N` 退出 terminal input 的方式仍保留。
 
 > 最近选择保存在 `stdpath("state")/dotfiles-selected-agent`，因此其他 live session 下一次按 `Option + /`、以及 Neovim 重启后都会跟随最新选择。如果保存的 agent 在当前机器不可用，会自动回退到已安装列表中的第一个，默认优先 Codex。新增 agent 时只需在配置中的 agent 注册表和顺序列表各加一项。
 
-> Codex 和 Grok 通道在一次 Neovim 运行期间各自只维护一个会话，并默认使用 `--yolo` 最高权限；切换到其他项目后仍会回到各自原对话。Codex terminal 中按 `gx` 时，光标下或同一行内 visual 选中的相对路径始终按这个会话启动时的项目根解析，不会误用后来切换到的项目；反引号路径、Markdown 链接、`path:行:列` 和 `path#L行C列` 都可识别，引用末尾或定位后紧邻正文的中英文标点会自动忽略。目标文件会复用刚离开的非 terminal 编辑窗口，找不到时回退到打开 drawer 前的窗口，Codex 继续留在底部；网页 URL 仍交给系统浏览器。Codex 最新输出实际可见时还会自动 check、清除红色完成未读并关闭对应 macOS popup；这些通知和 `gx` 集成目前只属于 Codex。agent 进程退出后，隐藏并重新打开会从当前项目启动新会话。
+> Codex 和 Grok 在一次 Neovim 运行期间各自只维护一个会话，并默认使用 `--yolo`；切换项目后仍回到原对话。Codex 额外使用 `--no-alt-screen` 保留 scrollback；`[a` / `]a` 以每轮用户提示后的第一条 Codex 输出为回答边界。`gx` 优先在同 tab 的普通编辑窗口打开路径；没有其他编辑窗口时会在当前窗口打开并把 Codex buffer 隐藏，随后按 `Option+/` 可原样切回。Codex 最新输出实际可见时自动 check、清除未读并关闭对应 macOS popup。agent 进程退出后，重新打开会从当前项目启动新会话。
 
 > 外部工具（如 Claude）改了文件，nvim 会在光标停 0.5 秒内自动重新加载并提示。
 
@@ -229,7 +232,7 @@ browser 内（telescope 默认键）：
 |-------------|------|
 | `Space fb` / `:ls` | 打开同一套 Telescope session buffer 管理器；默认 normal mode |
 | 管理器内 `j` / `k` | 移动选择并实时预览 buffer 内容 |
-| 管理器内 `Enter` | 在当前安全窗口打开选择；完整 terminal 选中后自动进入输入，从底部 shell / agent 发起不会覆盖 drawer |
+| 管理器内 `Enter` | 在当前安全窗口打开选择；完整 terminal 选中后自动进入输入，从底部 shell / Grok drawer 发起不会覆盖 drawer |
 | 管理器内 `dd` | 删除选择；完整 terminal 先确认再结束进程，clean 文件 buffer 直接删，modified buffer 先选择 Cancel / 保存后删除 / 丢弃后删除 |
 | 管理器内 `q` / `Esc` | 关闭并回到发起窗口 |
 | `:ls!` / `:ls {flags}` / `:buffers` / `:files` | 保持 Neovim 原生命令，不进入管理器 |
@@ -237,7 +240,7 @@ browser 内（telescope 默认键）：
 | `:bd` | 关闭当前 buffer |
 | `:e filename` | 打开/新建文件 |
 
-> 管理器列出当前 Nvim session 的普通 listed buffer，包括 `Space t` 打开的完整 terminal；它可预览、切换，`dd` 确认后可关闭。底部普通 shell、Codex 和 Grok drawer buffer 始终不进入列表或删除范围。picker 和删除确认都限制在安全目标窗口矩形内，不会盖住或替换 drawer。从完整 terminal 发起时会直接复用当前窗口，选择 Oil / 文件 buffer 不会多出 split；从底部 drawer 发起时才路由到同 tab 的普通编辑窗口，没有安全窗口时临时在上方创建 split。
+> 管理器列出当前 Nvim session 的普通 listed buffer，包括 `Space t` 完整 terminal 和 Codex；它们可预览、切换，`dd` 确认后可结束进程。底部普通 shell / Grok drawer buffer 始终不进入列表或删除范围。picker 和删除确认都限制在安全目标窗口矩形内；从完整 terminal 或 Codex 发起时直接复用当前窗口，从底部 drawer 发起时才路由到同 tab 的普通编辑窗口。
 
 ---
 
