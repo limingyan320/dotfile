@@ -220,7 +220,7 @@ browser 内（telescope 默认键）：
 
 > 最近选择保存在 `stdpath("state")/dotfiles-selected-agent`，因此其他 live session 下一次按 `Option + /`、以及 Neovim 重启后都会跟随最新选择。如果保存的 agent 在当前机器不可用，会自动回退到已安装列表中的第一个，默认优先 Codex。新增 agent 时只需在配置中的 agent 注册表和顺序列表各加一项。
 
-> Codex 和 Grok 在一次 Neovim 运行期间各自只维护一个会话，并默认使用 `--yolo`；切换项目后仍回到原对话。Codex 额外使用 `--no-alt-screen` 保留 scrollback；`[a` / `]a` 以每轮用户提示后的第一条 Codex 输出为回答边界。`gx` 优先在同 tab 的普通编辑窗口打开路径；没有其他编辑窗口时会在当前窗口打开并把 Codex buffer 隐藏，随后按 `Option+/` 可原样切回。Codex 最新输出实际可见时自动 check、清除未读并关闭对应 macOS popup。agent 进程退出后，重新打开会从当前项目启动新会话。
+> Codex 和 Grok 在一次 Neovim 运行期间各自只维护一个会话，并默认使用 `--yolo`；切换项目后仍回到原对话。Codex 额外使用 `--no-alt-screen` 保留 scrollback；`[a` / `]a` 以每轮用户提示后的第一条 Codex 输出为回答边界。`gx` 优先在同 tab 的普通编辑窗口打开路径；没有其他编辑窗口时会在当前窗口打开并把 Codex buffer 隐藏，随后按 `Option+/` 可原样切回。Codex full terminal 在前台、作为当前窗口且最新输出可见时会自动 check、清除未读并关闭对应 macOS popup；terminal 输出结束后还会延迟补查一次，避免通知状态稍晚落盘时漏关。agent 进程退出后，重新打开会从当前项目启动新会话。
 
 > 外部工具（如 Claude）改了文件，nvim 会在光标停 0.5 秒内自动重新加载并提示。
 

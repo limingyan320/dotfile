@@ -80,6 +80,13 @@ assert(
   end) >= vim.api.nvim_buf_line_count(codex_buf),
   "G should place the agent view at the latest output before locking"
 )
+local original_list_uis = vim.api.nvim_list_uis
+local original_ui_focused = vim.g.dotfiles_ui_focused
+vim.api.nvim_list_uis = function()
+  return { {} }
+end
+vim.g.dotfiles_ui_focused = 1
+assert(_G.dotfiles_codex_is_observed(), "full Codex at latest output should be observed")
 vim.api.nvim_win_set_cursor(drawer_win, { 20, 0 })
 vim.api.nvim_win_call(drawer_win, function()
   vim.cmd("normal! zt")
@@ -93,6 +100,7 @@ assert(
   end) < vim.api.nvim_buf_line_count(codex_buf),
   "scroll-lock fixture must stay above the latest output"
 )
+assert(not _G.dotfiles_codex_is_observed(), "scrolled-back Codex output must remain unread")
 vim.api.nvim_chan_send(job_id, "finish\n")
 assert(vim.wait(2000, function()
   if not buffer_contains(codex_buf, "final-output") then
@@ -122,6 +130,53 @@ if not resumed_following then
     view = vim.api.nvim_win_call(drawer_win, vim.fn.winsaveview),
   }))
 end
+assert(_G.dotfiles_codex_is_observed(), "G should make full Codex observable again")
+
+local observation_events = {}
+for _, autocmd in ipairs(vim.api.nvim_get_autocmds({ group = "dotfiles_codex_observation" })) do
+  observation_events[autocmd.event] = true
+end
+assert(observation_events.CursorHold, "Codex observation should retry after the UI settles")
+assert(observation_events.TermEnter, "entering Codex input should re-check notification state")
+assert(observation_events.TextChangedT, "Codex terminal output should re-check notification state")
+
+local observation_root = vim.fn.tempname()
+assert(vim.fn.mkdir(vim.fs.joinpath(observation_root, "agent-status"), "p") == 1)
+local observation_server = vim.v.servername
+assert(observation_server ~= "", "notification observation test requires an Nvim server")
+local original_session_dir = vim.env.DOTFILES_NVIM_SESSION_DIR
+local original_listener_url = vim.env.CODEX_NOTIFY_LISTENER_URL
+vim.env.DOTFILES_NVIM_SESSION_DIR = observation_root
+vim.env.CODEX_NOTIFY_LISTENER_URL = "http://127.0.0.1:1"
+local observation_state_path = vim.fs.joinpath(
+  observation_root,
+  "agent-status",
+  vim.fn.sha256(vim.fs.normalize(observation_server)) .. ".json"
+)
+local observation_state = {
+  version = 1,
+  nvim_server = vim.fs.normalize(observation_server),
+  state = "ready",
+  unread = true,
+  turn_id = "full-codex-observation-turn",
+  notification_id = "full-codex-observation-notification",
+}
+assert_equal(
+  vim.fn.writefile({ vim.json.encode(observation_state) }, observation_state_path),
+  0,
+  "notification observation state fixture"
+)
+vim.api.nvim_exec_autocmds("TextChangedT", { buffer = codex_buf, modeline = false })
+assert(vim.wait(2000, function()
+  local ok, state = pcall(vim.json.decode, table.concat(vim.fn.readfile(observation_state_path), "\n"))
+  return ok and state.state == "idle" and state.unread == false
+end), "full Codex terminal output should acknowledge and dismiss ready notifications")
+vim.env.DOTFILES_NVIM_SESSION_DIR = original_session_dir
+vim.env.CODEX_NOTIFY_LISTENER_URL = original_listener_url
+vim.fs.rm(observation_root, { recursive = true, force = true })
+vim.g.dotfiles_ui_focused = original_ui_focused
+vim.api.nvim_list_uis = original_list_uis
+
 vim.fn.jobstop(job_id)
 local job_status = vim.fn.jobwait({ job_id }, 1000)[1]
 assert(job_status ~= -1, "fake Codex should stop cleanly")

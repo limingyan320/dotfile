@@ -2339,6 +2339,7 @@ function _G.dotfiles_codex_is_observed()
 end
 
 local codex_observation_scheduled = false
+local codex_observation_retry_scheduled = false
 
 local function acknowledge_codex_if_observed()
   local state = read_codex_agent_state(vim.v.servername)
@@ -2360,10 +2361,39 @@ local function schedule_codex_observation()
   end)
 end
 
+local function schedule_codex_observation_retry()
+  schedule_codex_observation()
+  if codex_observation_retry_scheduled then
+    return
+  end
+  codex_observation_retry_scheduled = true
+  vim.defer_fn(function()
+    codex_observation_retry_scheduled = false
+    schedule_codex_observation()
+  end, 300)
+end
+
 local codex_observation_group = vim.api.nvim_create_augroup("dotfiles_codex_observation", { clear = true })
-vim.api.nvim_create_autocmd({ "UIEnter", "FocusGained", "WinEnter", "BufEnter", "WinScrolled" }, {
+vim.api.nvim_create_autocmd({
+  "UIEnter",
+  "FocusGained",
+  "WinEnter",
+  "BufEnter",
+  "WinScrolled",
+  "CursorMoved",
+  "CursorHold",
+  "TermEnter",
+}, {
   group = codex_observation_group,
   callback = schedule_codex_observation,
+})
+vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedT" }, {
+  group = codex_observation_group,
+  callback = function(args)
+    if terminal_sessions.codex.buf == args.buf then
+      schedule_codex_observation_retry()
+    end
+  end,
 })
 
 local agent_scroll_lock_group = vim.api.nvim_create_augroup("DotfilesAgentScrollLock", { clear = true })

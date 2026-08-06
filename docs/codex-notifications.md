@@ -16,7 +16,7 @@ Codex TermClose   -> idle         -> 仅清理同 turn 仍残留的 working
 
 Codex 当前在用户中断回合时不会触发 `Stop` hook，因此 Nvim 还会监测自己 Codex terminal 的 `b:term_title`。`apply.sh` 显式启用 Codex title spinner；对应 terminal 每 200ms 在本地采样一次 title，工作中的 spinner 会持续刷新 6 秒 debounce。title 静默后只有状态仍是同一个 `turn_id` 的 `working` 才原子回到 `idle`；正常完成的 `Stop` hook 最多运行 5 秒，会优先写入 `ready` / `seen`，不会被兜底吞掉。Codex 进程退出时 `TermClose` 使用相同的 turn guard 立即清理。该监测随 Nvim session 在后台继续运行，不依赖 Dashboard 是否打开或 UI 是否 attached。
 
-“看到”要求对应 Nvim UI 在前台、Codex drawer 是当前窗口，并且视口已经位于 terminal 最新输出。Codex 完成时若满足这些条件，结果直接视为 seen，不产生未读标记或 popup；否则保持未读，直到 attach 回该 session、切入 Codex 窗口、恢复焦点或滚动到底后满足条件。仅仅连接到该 session 的编辑窗口、打开 Telescope，或把尚未查看的 drawer 隐藏，都不会误清未读。用户在 agent terminal-normal 中滚离最新输出后，Nvim 会锁定 cursor / topline；完成输出、hook 的 observed 查询和 drawer guardian 修复都不会把视口拉走，只有手动滚到底部、按 `G` 或进入 terminal-input 才解除阅读锁。
+“看到”要求对应 Nvim UI 在前台、专属 Codex full terminal 是当前窗口，并且视口已经位于 terminal 最新输出。Codex 完成时若满足这些条件，结果直接视为 seen，不产生未读标记或 popup；否则保持未读，直到 attach 回该 session、切入 Codex 窗口、恢复焦点或滚动到底后满足条件。Nvim 会在 Codex terminal 输出、进入 terminal-input、光标停留和窗口/焦点切换时重新检查，并在输出事件后延迟补查一次，避免 popup 状态稍晚落盘时漏掉 `/dismiss`。仅仅连接到该 session 的其他编辑窗口、打开 Telescope，或把尚未查看的 Codex buffer 隐藏，都不会误清未读。用户在 Codex terminal-normal 中滚离最新输出后，Nvim 会锁定 cursor / topline；完成输出和 hook 的 observed 查询不会把视口拉走，只有手动滚到底部、按 `G` 或进入 terminal-input 才解除阅读锁。
 
 迟到的旧 turn notify 不会覆盖新 turn 的 working 状态；listener 还会短期保留已 check 的 notification ID，阻止迟到 popup 重新出现。
 
