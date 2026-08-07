@@ -70,6 +70,7 @@ alias gimme='open -a'
 alias obs='open -a Obsidian'
 alias v5="ssh -N -D 1080 administrator@192.168.100.127"
 alias chrome='open -na "Google Chrome" --args --ignore-certificate-errors --user-data-dir=/tmp/chrome-insecure'
+alias mirror='/Users/lumynous/UxPlay/build/uxplay -n kagami -nh -vsync no -vs "osxvideosink force-aspect-ratio=true"'
 
 
 
