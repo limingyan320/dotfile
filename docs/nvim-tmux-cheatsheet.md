@@ -135,7 +135,7 @@ live 列表按 `CURRENT`、`DETACHED`、`ATTACHED` 排序，并显示 Codex 状�
 
 从刚启动的未命名空白 `nvim` / `nvim .` 连接时，这个入口实例会自动回收；如果当前实例已命名、已有分屏、多个 buffer、未保存修改、terminal，或它本身曾被 detach，则切换后仍留在后台，可以再通过 `Space fs` 切回来。
 
-隐藏 host 使用单独的 tmux socket `dotfiles-nvim-host`，前台仍是直接的 Neovim remote UI，不会出现 tmux 状态栏、copy mode 或滚动拦截；普通 `tmux ls` 也看不到它。host 创建 socket 后还必须在 2 秒内通过真实 RPC 探活，失败时只回收本次新建的空 session。排查时可运行 `tmux -L dotfiles-nvim-host ls`。`:qa` / `:qa!` 会正常结束对应 Nvim session、socket；最后一个 session 退出后隐藏 tmux server 也自动结束。`nvim --headless`、`--server`、`--listen`、管道输入等工具调用会自动绕过托管；临时需要完全直启时可用 `command nvim ...`。
+隐藏 host 使用单独的 tmux socket `dotfiles-nvim-host`，前台仍是直接的 Neovim remote UI，不会出现 tmux 状态栏、copy mode 或滚动拦截；普通 `tmux ls` 也看不到它。即使当前 nvim 启动时没有预先导出 `DOTFILES_NVIM_SESSION_DIR` / `DOTFILES_NVIM_TMUX_SERVER`，配置也会回退到与 `.shared_rc` 相同的默认值；Dashboard 新建 session 会把这些值显式传给 hidden host，创建校验失败时会回收本次刚拉起的空 host。host 创建 socket 后还必须在 2 秒内通过真实 RPC 探活，失败时只回收本次新建的空 session。排查时可运行 `tmux -L dotfiles-nvim-host ls`。`:qa` / `:qa!` 会正常结束对应 Nvim session、socket；最后一个 session 退出后隐藏 tmux server 也自动结束。`nvim --headless`、`--server`、`--listen`、管道输入等工具调用会自动绕过托管；临时需要完全直启时可用 `command nvim ...`。
 
 ---
 

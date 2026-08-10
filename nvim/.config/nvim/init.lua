@@ -50,17 +50,32 @@ local resolved_init_path = uv.fs_realpath(vim.fn.stdpath("config") .. "/init.lua
 local dotfiles_root = vim.fn.fnamemodify(resolved_init_path, ":h:h:h:h")
 local codex_agent_state_script = dotfiles_root .. "/codex-notifications/agent_state.py"
 
-local function codex_agent_status_dir()
+local function dotfiles_nvim_session_dir()
   local directory = vim.env.DOTFILES_NVIM_SESSION_DIR
   if not directory or directory == "" then
     local state_home = vim.env.XDG_STATE_HOME
     if state_home and state_home ~= "" then
-      directory = state_home .. "/nvim/sessions"
+      directory = vim.fs.joinpath(state_home, "nvim", "sessions")
     else
       directory = vim.fn.expand("~/.local/state/nvim/sessions")
     end
   end
-  return vim.fs.normalize(directory .. "/agent-status")
+  directory = vim.fs.normalize(directory)
+  vim.env.DOTFILES_NVIM_SESSION_DIR = directory
+  return directory
+end
+
+local function dotfiles_nvim_tmux_server()
+  local server = vim.env.DOTFILES_NVIM_TMUX_SERVER
+  if not server or server == "" then
+    server = "dotfiles-nvim-host"
+  end
+  vim.env.DOTFILES_NVIM_TMUX_SERVER = server
+  return server
+end
+
+local function codex_agent_status_dir()
+  return vim.fs.joinpath(dotfiles_nvim_session_dir(), "agent-status")
 end
 
 local function codex_agent_state_path(address)
@@ -385,8 +400,8 @@ local function current_nvim_session_info()
   return info
 end
 
-local managed_nvim_session_dir = vim.env.DOTFILES_NVIM_SESSION_DIR
-local managed_nvim_tmux_server = vim.env.DOTFILES_NVIM_TMUX_SERVER or "dotfiles-nvim-host"
+local managed_nvim_session_dir = dotfiles_nvim_session_dir()
+local managed_nvim_tmux_server = dotfiles_nvim_tmux_server()
 
 local function managed_nvim_session_id(address)
   if not managed_nvim_session_dir or managed_nvim_session_dir == "" then
@@ -564,6 +579,8 @@ local session_environment_names = {
   "XDG_DATA_HOME",
   "XDG_STATE_HOME",
   "XDG_CACHE_HOME",
+  "DOTFILES_NVIM_SESSION_DIR",
+  "DOTFILES_NVIM_TMUX_SERVER",
   "CODEX_HOME",
   "CODEX_NOTIFY_LISTEN_PORT",
   "CODEX_NOTIFY_LISTENER_URL",
@@ -640,10 +657,30 @@ local function create_managed_nvim_session(name, cwd, callback)
     text = true,
     env = {
       DOTFILES_NVIM_SESSION_NAME = name,
+      DOTFILES_NVIM_SESSION_DIR = managed_nvim_session_dir,
+      DOTFILES_NVIM_TMUX_SERVER = managed_nvim_tmux_server,
       NVIM = "",
       NVIM_LISTEN_ADDRESS = "",
     },
   }
+
+  local function cleanup_created_host(address)
+    local session_id = tostring(address or ""):match("([^/]+)%.sock$")
+    if session_id and session_id:match("^nvim%-.+") and vim.fn.executable("tmux") == 1 then
+      vim.system({
+        "tmux",
+        "-L",
+        managed_nvim_tmux_server,
+        "kill-session",
+        "-t",
+        session_id,
+      }, { text = true, env = { TMUX = "" } }, function() end)
+    end
+    local stat = address and uv.fs_stat(address) or nil
+    if stat and stat.type == "socket" then
+      pcall(uv.fs_unlink, address)
+    end
+  end
 
   local start_ok, err = pcall(vim.system, command, options, function(result)
     vim.schedule(function()
@@ -652,6 +689,7 @@ local function create_managed_nvim_session(name, cwd, callback)
       local address = lines[#lines]
       local stat = address and uv.fs_stat(address) or nil
       if result.code ~= 0 or not managed_nvim_session_id(address or "") or not stat or stat.type ~= "socket" then
+        cleanup_created_host(address)
         local detail = vim.trim(result.stderr or "")
         callback(nil, detail ~= "" and detail or "隐藏 Nvim host 未能启动")
         return
