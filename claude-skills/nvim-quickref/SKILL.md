@@ -23,11 +23,11 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 - `clipboard = unnamedplus`；检测到 `$SSH_TTY` / `$SSH_CONNECTION` / `$XDG_SESSION_TYPE=tty` 时自动切到 **OSC 52**（走终端剪贴板，需要 iTerm2/WezTerm/kitty 等允许剪贴板访问，tmux 需 `set-clipboard on`）
 - `autoread` + `updatetime = 500`（缩短 `CursorHold` 触发间隔让外部改动近实时可见）
 - 外部改动侦测：`FocusGained` / `BufEnter` / `CursorHold{,I}` / `TermLeave` 主动 `checktime`；每个文件 buffer 还会跑一个 `uv.new_fs_event` watcher，被外部改动后弹 WARN `文件被外部修改，已重新加载`
-- terminal mode 使用不闪烁的黄色实心块光标；`<leader>t` 打开完整 terminal buffer；macOS `Caps+N` 经 Karabiner 发送 `<C-S-Del>`，可从 terminal input / terminal-normal 返回同 tab 普通编辑窗口；完整 Codex 独占当前窗口时会恢复它替换前的 buffer
-- `<M-a>` 用 `j` / `k` 菜单选择 Codex 或 Grok，选择结果保存在本机 Neovim state；`<M-/>` 对 Codex 显示 / 隐藏当前普通窗口里的专属 full terminal buffer，再按回到原 buffer，若已显示在其他窗口则直接聚焦；对 Grok 仍切换底部 drawer
-- Codex 以 `codex --yolo --no-alt-screen` 从首次打开时的 git 根启动，是可移动、分屏、关闭并进入 buffer 管理器的普通 listed session buffer；terminal-normal 用 `[a` / `]a` 跳回答、`gx` 打开路径。滚离最新输出后会锁定 cursor / topline，手动滚到底部、按 `G` 或进入 terminal-input 才解锁；full terminal 在前台、当前窗口且最新输出可见时自动 check 完成未读并关闭 macOS popup，terminal 输出后会延迟补查避免状态落盘竞态
-- 底部 drawer 只保留普通 shell 和 Grok：始终跟随当前 tab、全宽贴底，不参与上方窗口布局；`<C-/>` / `<C-_>` 切换 shell，选中 Grok 时 `<M-/>` 切换 Grok，`<M-+>` / `<M-->`（含 `<M-=>`）调整 drawer 高度
-- `<leader>fb` 和精确输入 `:ls<CR>` 打开同一个安全 Telescope session buffer 管理器；`<leader>t` 完整 terminal 和 Codex 都可列出、预览、切换，`dd` 确认后可结束进程；底部 shell / Grok drawer buffer 永不进入列表或删除范围
+- terminal mode 使用不闪烁的黄色实心块光标；`<leader>t` 打开完整 terminal buffer；macOS `Caps+N` 经 Karabiner 发送 `<C-S-Del>`，可从 terminal input / terminal-normal 返回同 tab 普通编辑窗口；完整 agent 独占当前窗口时会恢复它替换前的 buffer
+- `<M-a>` 用 `j` / `k` 菜单选择 Codex 或 Grok，选择结果保存在本机 Neovim state；`<M-/>` 对两者都显示 / 隐藏当前普通窗口里的专属 full terminal buffer，再按回到原 buffer，若已显示在其他窗口则直接聚焦
+- Codex 以 `codex --yolo --no-alt-screen`、Grok 以 `grok --yolo` 从首次打开时的 git 根启动；两者都是可移动、分屏、关闭并进入 buffer 管理器的普通 listed session buffer。terminal-normal 滚离最新输出后会锁定 cursor / topline，手动滚到底部、按 `G` 或进入 terminal-input 才解锁；Codex 还可用 `[a` / `]a` 跳回答、`gx` 打开路径，并在 full terminal 位于前台、当前窗口且最新输出可见时自动 check 完成未读及关闭 macOS popup
+- 底部 drawer 只保留普通 shell：始终跟随当前 tab、全宽贴底，不参与上方窗口布局；`<C-/>` / `<C-_>` 切换，`<M-+>` / `<M-->`（含 `<M-=>`）调整 drawer 高度
+- `<leader>fb` 和精确输入 `:ls<CR>` 打开同一个安全 Telescope session buffer 管理器；`<leader>t` 完整 terminal、Codex 和 Grok 都可列出、预览、切换，`dd` 确认后可结束进程；底部 shell drawer buffer 永不进入列表或删除范围
 - Neovim 0.12 live session：交互式 shell 的 `nvim` / `nvim .` / `vim` 由独立的 `dotfiles-nvim-host` tmux server 托管，host 需通过 RPC 探活才会接入 UI；terminal 意外关闭后进程仍存活；`<leader>d` 主动脱离；`<leader>fs` 打开原生 Session Dashboard，聚焦 session 时自动展开 tag，`<leader>fS` 直接进入当前 session 的 Tag 模式；Dashboard 支持连接、新建、重命名、Session / Tag 回收站、Codex 状态动画和人工进度日志；live Session Trash 保留 24 小时且到期时跳过 attached UI / working Codex，Tag Trash 保留 30 天；已结束 Session 的 Tag 以 `ENDED` / `Past Session Notes` 保留且可手动整组删除；日志约 400ms debounce 自动保存；跨 session RPC 总超时 700ms；普通 `tmux ls` 不显示隐藏 host
 - netrw 禁用（`vim.g.loaded_netrw = 1`），文件浏览全走 oil
 
@@ -44,13 +44,13 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 | n | `<leader>d` | detach 当前 Nvim UI，完整保留窗口、buffer、terminal / agent 进程供稍后恢复 |
 | n | `<leader>yp` | 复制当前 buffer 绝对路径到 `+` 和 `"` |
 | n | `<leader>t` | 在当前上下文目录开完整 terminal buffer 并直接进入输入；若当前 buffer 是 terminal，则沿用该 shell cwd |
-| n/t（terminal） | `Caps+N`（Karabiner → `<C-S-Del>`） | 退出 terminal input 并跳回同 tab 最近的普通编辑窗口；完整 Codex 没有其他编辑窗口时恢复它替换前的 buffer |
+| n/t（terminal） | `Caps+N`（Karabiner → `<C-S-Del>`） | 退出 terminal input 并跳回同 tab 最近的普通编辑窗口；完整 agent 没有其他编辑窗口时恢复它替换前的 buffer |
 | n/i/t | `<C-/>` / `<C-_>` | toggle 底部普通 shell；首次打开按当前上下文目录启动，显示后自动进入输入，隐藏时保留进程 |
 | n/i/t | `<M-a>` | 打开 agent 选择菜单；`j` / `k` 移动、`Enter` 确认、`Esc` 取消，只显示当前 `PATH` 中可用的 Codex / Grok，选择结果跨 live session 和重启保留 |
-| n/i/t | `<M-/>` | toggle 最近选择的 agent；Codex 是当前普通窗口里的 listed full terminal，再按恢复原 buffer；Grok 仍使用底部 drawer；显示后停在 terminal-normal |
+| n/i/t | `<M-/>` | toggle 最近选择的 agent；Codex / Grok 都是当前普通窗口里的 listed full terminal，再按恢复原 buffer；显示后停在 terminal-normal |
 | n（Codex terminal） | `[a` / `]a` | 跳到上 / 下一条 Codex 回答开头并置顶；连续按可逐轮翻阅，支持 `2[a` / `2]a` 数字前缀 |
 | n/x（Codex terminal） | `gx` | 打开光标下或 visual 选中的绝对/项目相对路径；支持 `:行:列` / `#L行C列`，忽略末尾或紧邻后续正文的中英文标点，复用上一个非 terminal 编辑窗口并跳到定位 |
-| n/i/t | `<M-+>` / `<M-->` | 增高 / 降低当前底部 shell / Grok drawer；`<M-=>` 也会增高，这是唯一允许的 drawer 高度调整入口 |
+| n/i/t | `<M-+>` / `<M-->` | 增高 / 降低当前底部 shell drawer；`<M-=>` 也会增高，这是唯一允许的 drawer 高度调整入口 |
 | n | `<C-d>` / `<C-u>` | 视图下/上滚 6 行，光标尽量留在原位置；可用 `10<C-d>` / `10<C-u>` 临时指定行数 |
 | n | `<C-e>` / `<C-y>` | 原生微滚：视图下/上滚 1 行 |
 | i | `<CR>` | 智能回车：已选中补全项时确认；否则正常换行；在 `{}` / `[]` / `()` 中间会自动拆行并对齐闭括号 |
@@ -129,7 +129,7 @@ picker 内自定义键位：
 
 buffer 管理器是独立的 Telescope picker，默认 normal mode：`j` / `k` 移动并实时预览，`Enter` 在当前安全 session-buffer 窗口打开，`dd` 删除，`q` / `Esc` 取消并恢复发起窗口。`<leader>t` 的完整 terminal 也在列表中，选择后自动进入 terminal 输入；`dd` 会先确认再结束进程并关闭 buffer。clean 文件 buffer 直接删除；modified buffer 弹出默认停在 `Cancel` 的三项选择：`Cancel`、`Save and delete`、`Discard changes and delete`；未命名 buffer 选择保存时再询问文件路径。所有 select / split / tab 打开 action 都被收口到重新校验后的安全窗口，quickfix 批量导出在此 picker 内禁用。
 
-picker 的 results / preview / prompt 始终限制在目标窗口矩形内；drawer 可见时不会改变其 buffer 或高度。从底部 shell / Grok drawer 发起会复用同 tab 的普通编辑窗口；没有安全目标时才在 drawer 上方创建 unlisted `nofile` 临时 split，取消时清掉，选中时保留。完整 terminal 本身是安全目标，picker 直接复用其窗口，选择其他 buffer 时不产生额外 split；目标窗口中途变成 drawer 时会重新路由。
+picker 的 results / preview / prompt 始终限制在目标窗口矩形内；drawer 可见时不会改变其 buffer 或高度。从底部 shell drawer 发起会复用同 tab 的普通编辑窗口；没有安全目标时才在 drawer 上方创建 unlisted `nofile` 临时 split，取消时清掉，选中时保留。完整 terminal / agent 本身是安全目标，picker 直接复用其窗口，选择其他 buffer 时不产生额外 split；目标窗口中途变成 drawer 时会重新路由。
 
 file_browser 扩展 opts：`hidden = true`, `grouped = true`（目录排前面）, `respect_gitignore = false`, `hijack_netrw = false`（交给 oil）
 

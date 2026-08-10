@@ -1553,7 +1553,7 @@ local terminal_sessions = {
   },
   grok = {
     buf = nil,
-    drawer = true,
+    drawer = false,
     command = { "grok", "--yolo" },
     label = "Grok",
     executable = "grok",
@@ -1638,6 +1638,15 @@ local function terminal_window(win)
   return vim.bo[vim.api.nvim_win_get_buf(win)].buftype == "terminal"
 end
 
+local function agent_session_for_buffer(bufnr)
+  for name, session in pairs(terminal_sessions) do
+    if session.is_agent and session.buf == bufnr then
+      return name, session
+    end
+  end
+  return nil, nil
+end
+
 local protected_window_command
 local function run_window_command(command)
   if protected_window_command then
@@ -1712,7 +1721,7 @@ local function buffer_picker_window(win)
   return not terminal_drawer_buffer(vim.api.nvim_win_get_buf(win))
 end
 
-local function codex_target_window()
+local function terminal_editor_target_window()
   local alternate_number = vim.fn.winnr("#")
   if alternate_number > 0 then
     local alternate = vim.fn.win_getid(alternate_number)
@@ -1748,10 +1757,9 @@ local function codex_target_window()
   end
 
   local current_win = vim.api.nvim_get_current_win()
-  local codex = terminal_sessions.codex
-  if codex.buf
-    and vim.api.nvim_buf_is_valid(codex.buf)
-    and vim.api.nvim_win_get_buf(current_win) == codex.buf
+  local _, session = agent_session_for_buffer(vim.api.nvim_win_get_buf(current_win))
+  if session
+    and not session.drawer
     and vim.api.nvim_win_get_config(current_win).relative == ""
   then
     return current_win
@@ -1761,7 +1769,7 @@ local function codex_target_window()
 end
 
 local function buffer_picker_target_window()
-  local editor_win = codex_target_window()
+  local editor_win = terminal_editor_target_window()
   if buffer_picker_window(editor_win) then
     return editor_win
   end
@@ -1779,15 +1787,16 @@ local function focus_editor_from_terminal()
     return
   end
 
-  local target_win = codex_target_window()
+  local target_win = terminal_editor_target_window()
   if not editor_target_window(target_win) then
-    local codex = terminal_sessions.codex
-    if codex.buf == vim.api.nvim_get_current_buf()
-      and codex.return_buf
-      and vim.api.nvim_buf_is_valid(codex.return_buf)
-      and codex.return_buf ~= codex.buf
+    local _, session = agent_session_for_buffer(vim.api.nvim_get_current_buf())
+    if session
+      and not session.drawer
+      and session.return_buf
+      and vim.api.nvim_buf_is_valid(session.return_buf)
+      and session.return_buf ~= session.buf
     then
-      vim.api.nvim_win_set_buf(current_win, codex.return_buf)
+      vim.api.nvim_win_set_buf(current_win, session.return_buf)
       return
     end
     vim.notify("当前 tab 没有可切换的普通编辑窗口", vim.log.levels.WARN)
@@ -2027,7 +2036,7 @@ local function open_codex_reference(session, reference)
     return
   end
 
-  local target_win = codex_target_window()
+  local target_win = terminal_editor_target_window()
   if not target_win then
     vim.notify("当前 tab 没有可用于打开路径的编辑窗口", vim.log.levels.WARN)
     return
@@ -2206,15 +2215,6 @@ local function terminal_window_is_at_latest_output(win, bufnr)
     return vim.fn.line("w$")
   end)
   return last_visible_line >= vim.api.nvim_buf_line_count(bufnr)
-end
-
-local function agent_session_for_buffer(bufnr)
-  for name, session in pairs(terminal_sessions) do
-    if session.is_agent and session.buf == bufnr then
-      return name, session
-    end
-  end
-  return nil, nil
 end
 
 local function current_agent_window()
@@ -2730,12 +2730,12 @@ end
 local function full_agent_target_window()
   local current_win = vim.api.nvim_get_current_win()
   if terminal_drawer_window(current_win) then
-    return codex_target_window() or ensure_current_tab_editor_window()
+    return terminal_editor_target_window() or ensure_current_tab_editor_window()
   end
   if vim.api.nvim_win_get_config(current_win).relative == "" then
     return current_win
   end
-  return codex_target_window() or ensure_current_tab_editor_window()
+  return terminal_editor_target_window() or ensure_current_tab_editor_window()
 end
 
 local function hide_full_agent_session(session, win)
@@ -2844,7 +2844,7 @@ end
 protected_window_command = function(command)
   local current_win = vim.api.nvim_get_current_win()
   if terminal_drawer_window(current_win) then
-    vim.notify("底部 shell/Grok drawer 不参与窗口布局操作", vim.log.levels.INFO)
+    vim.notify("底部 shell drawer 不参与窗口布局操作", vim.log.levels.INFO)
     return
   end
 
@@ -2867,7 +2867,7 @@ drawer_editor_target = function()
   if not terminal_drawer_window(vim.api.nvim_get_current_win()) then
     return nil
   end
-  return codex_target_window() or ensure_current_tab_editor_window()
+  return terminal_editor_target_window() or ensure_current_tab_editor_window()
 end
 
 toggle_window_zoom_impl = function()
