@@ -3300,6 +3300,26 @@ require("lazy").setup({
     end,
   },
   {
+    "Mofiqul/dracula.nvim",
+    lazy = false,
+    priority = 999,
+  },
+  {
+    "rebelot/kanagawa.nvim",
+    lazy = false,
+    priority = 998,
+  },
+  {
+    "ellisonleao/gruvbox.nvim",
+    lazy = false,
+    priority = 997,
+  },
+  {
+    "catppuccin/nvim",
+    lazy = false,
+    priority = 996
+  },
+  {
     "folke/flash.nvim",
     event = "VeryLazy",
     opts = {},
