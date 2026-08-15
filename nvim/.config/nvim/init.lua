@@ -1849,6 +1849,16 @@ local buffer_picker = require("dotfiles.buffer_picker").setup({
   is_editor_window = buffer_picker_window,
   find_editor_window = buffer_picker_target_window,
 })
+vim.keymap.set("n", "<leader>m", buffer_picker.add_mark, { desc = "Add next free buffer mark" })
+vim.keymap.set("n", "<C-I>", function()
+  local ctrl_i = vim.api.nvim_replace_termcodes("<C-I>", true, false, true)
+  vim.api.nvim_feedkeys(ctrl_i, "nx", false)
+end, { desc = "Jump to newer cursor position" })
+vim.keymap.set("n", "<Tab>", buffer_picker.hold_scoreboard, {
+  desc = "Hold session buffer scoreboard",
+  nowait = true,
+  silent = true,
+})
 
 local function terminal_hyperlink_at_cursor()
   local bufnr = vim.api.nvim_get_current_buf()

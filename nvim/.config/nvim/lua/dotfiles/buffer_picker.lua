@@ -4,9 +4,15 @@ local config
 local active_state
 local state_sequence = 0
 local filename_highlight_ns
+local scoreboard_state
+local scoreboard_highlight_ns
+local scoreboard_key_ns
 local SELECTED_FILENAME_HIGHLIGHT = "DotfilesBufferPickerSelectedFilename"
 local TELESCOPE_SELECTION_PRIORITY = 4095
 local FILENAME_HIGHLIGHT_PRIORITY = 4096
+local MARK_DESCRIPTIONS_VAR = "dotfiles_mark_descriptions"
+local SCOREBOARD_INITIAL_TIMEOUT_MS = 650
+local SCOREBOARD_REPEAT_TIMEOUT_MS = 130
 
 local DELETE_CANCEL = "Cancel"
 local DELETE_SAVE = "Save and delete"
@@ -15,6 +21,37 @@ local TERMINAL_CLOSE = "Close terminal"
 
 local function notify(message, level)
   vim.notify(message, level or vim.log.levels.INFO, { title = "Buffer manager" })
+end
+
+function M.add_mark()
+  local bufnr = vim.api.nvim_get_current_buf()
+  if vim.bo[bufnr].buftype ~= "" or not vim.bo[bufnr].buflisted then
+    notify("只能在普通 listed buffer 中添加 mark", vim.log.levels.WARN)
+    return nil
+  end
+
+  local free_mark
+  for code = string.byte("a"), string.byte("z") do
+    local mark = string.char(code)
+    local position = vim.api.nvim_buf_get_mark(bufnr, mark)
+    if position[1] == 0 then
+      free_mark = mark
+      break
+    end
+  end
+  if not free_mark then
+    notify("当前 buffer 的 a-z marks 已全部占用（26/26）", vim.log.levels.WARN)
+    return nil
+  end
+
+  local cursor = vim.api.nvim_win_get_cursor(0)
+  local ok, set = pcall(vim.api.nvim_buf_set_mark, bufnr, free_mark, cursor[1], cursor[2], {})
+  if not ok or not set then
+    notify(("无法添加 mark %s"):format(free_mark), vim.log.levels.ERROR)
+    return nil
+  end
+  notify(("已添加 mark %s · %d:%d"):format(free_mark, cursor[1], cursor[2] + 1))
+  return free_mark
 end
 
 local function protected_buffer(bufnr)
@@ -148,13 +185,437 @@ local function buffer_info(state)
   return buffers
 end
 
+local function inline_text(value)
+  return vim.trim(tostring(value or ""):gsub("[%c]", " "):gsub("%s+", " "))
+end
+
+local function mark_descriptions(bufnr)
+  if not vim.api.nvim_buf_is_valid(bufnr) then
+    return {}
+  end
+  local descriptions = vim.b[bufnr][MARK_DESCRIPTIONS_VAR]
+  return type(descriptions) == "table" and descriptions or {}
+end
+
+local function set_mark_description(bufnr, mark, description)
+  if not vim.api.nvim_buf_is_valid(bufnr) then
+    return false, "buffer is no longer valid"
+  end
+  local descriptions = vim.deepcopy(mark_descriptions(bufnr))
+  description = inline_text(description)
+  descriptions[mark] = description ~= "" and description or nil
+  local ok, err = pcall(function()
+    vim.b[bufnr][MARK_DESCRIPTIONS_VAR] = descriptions
+  end)
+  return ok, err
+end
+
+local function buffer_local_marks(entry)
+  local bufnr = entry.bufnr
+  if not vim.api.nvim_buf_is_valid(bufnr) or vim.bo[bufnr].buftype ~= "" then
+    return {}
+  end
+
+  local ok, mark_list = pcall(vim.fn.getmarklist, bufnr)
+  if not ok then
+    return {}
+  end
+  local descriptions = mark_descriptions(bufnr)
+  local marks = {}
+  for _, item in ipairs(mark_list) do
+    local mark = type(item.mark) == "string" and item.mark:match("^'([a-z])$") or nil
+    local position = item.pos
+    local lnum = type(position) == "table" and tonumber(position[2]) or nil
+    local col = type(position) == "table" and tonumber(position[3]) or nil
+    if mark and lnum and lnum > 0 and col then
+      local source_line = ""
+      if vim.api.nvim_buf_is_loaded(bufnr) then
+        source_line = inline_text(vim.api.nvim_buf_get_lines(bufnr, lnum - 1, lnum, false)[1])
+      end
+      marks[#marks + 1] = {
+        kind = "mark",
+        key = ("mark:%d:%s"):format(bufnr, mark),
+        bufnr = bufnr,
+        buffer = entry,
+        mark = mark,
+        lnum = lnum,
+        col = math.max(1, col),
+        description = inline_text(descriptions[mark]),
+        source_line = source_line,
+      }
+    end
+  end
+  table.sort(marks, function(left, right)
+    return left.mark < right.mark
+  end)
+  for index, mark in ipairs(marks) do
+    mark.branch = index == #marks and "└" or "├"
+  end
+  return marks
+end
+
+local function mark_display(entry)
+  local text = ""
+  local highlights = {}
+  local function append(value, highlight)
+    local start_col = #text
+    text = text .. value
+    if highlight then
+      highlights[#highlights + 1] = { { start_col, #text }, highlight }
+    end
+  end
+
+  append("    " .. entry.branch .. " ", "TelescopeResultsComment")
+  append(entry.mark, "TelescopeResultsIdentifier")
+  append("  ", "TelescopeResultsComment")
+  append(("%d:%d"):format(entry.lnum, entry.col), "TelescopeResultsNumber")
+  append("  ", "TelescopeResultsComment")
+  local summary = entry.description ~= "" and entry.description
+    or entry.source_line ~= "" and entry.source_line
+    or "(empty line)"
+  append(summary, entry.description ~= "" and "TelescopeNormal" or "TelescopeResultsComment")
+  return text, highlights
+end
+
+local function buffer_display_path(entry)
+  local name = entry.info.name
+  if name == "" then
+    return "[No Name]"
+  end
+  name = vim.fs.normalize(name)
+  local cwd = vim.uv.cwd() or vim.fn.getcwd()
+  return vim.fs.relpath(vim.fs.normalize(cwd), name) or name
+end
+
+local function buffer_lnum(entry)
+  local lnum = tonumber(entry.info.lnum) or 0
+  if lnum > 0 and vim.api.nvim_buf_is_loaded(entry.bufnr) then
+    lnum = math.max(1, math.min(lnum, vim.api.nvim_buf_line_count(entry.bufnr)))
+  end
+  return lnum
+end
+
+local function scoreboard_buffer_row(entry, bufnr_width, mark_count)
+  local text = ""
+  local highlights = {}
+  local function append(value, highlight)
+    local start_col = #text
+    text = text .. value
+    if highlight then
+      highlights[#highlights + 1] = { { start_col, #text }, highlight }
+    end
+  end
+
+  local hidden = entry.info.hidden == 1 and "h" or "a"
+  local readonly = vim.bo[entry.bufnr].readonly and "=" or " "
+  local changed = entry.info.changed == 1 and "+" or " "
+  append(("%" .. bufnr_width .. "d"):format(entry.bufnr), "TelescopeResultsNumber")
+  append(" " .. entry.flag .. hidden .. readonly .. changed .. " ", "TelescopeResultsComment")
+
+  local path = buffer_display_path(entry)
+  local filename = vim.fs.basename(path)
+  local directory_end = math.max(0, #path - #filename)
+  if directory_end > 0 then
+    append(path:sub(1, directory_end), "TelescopeResultsComment")
+  end
+  append(path:sub(directory_end + 1), "TelescopeResultsIdentifier")
+  append(":" .. buffer_lnum(entry), "TelescopeResultsNumber")
+  if mark_count > 0 then
+    append(("  ◆ %d"):format(mark_count), "DiagnosticHint")
+  end
+
+  return {
+    text = text,
+    highlights = highlights,
+    current = entry.flag == "%",
+  }
+end
+
+local function scoreboard_rows(source_win)
+  local state = {
+    target_win = valid_editor_window(source_win) and source_win or nil,
+    temporary_windows = {},
+  }
+  local buffers = buffer_info(state)
+  local bufnr_width = 1
+  for _, entry in ipairs(buffers) do
+    bufnr_width = math.max(bufnr_width, #tostring(entry.bufnr))
+  end
+
+  local rows = {}
+  local mark_count = 0
+  for _, entry in ipairs(buffers) do
+    local marks = buffer_local_marks(entry)
+    mark_count = mark_count + #marks
+    rows[#rows + 1] = scoreboard_buffer_row(entry, bufnr_width, #marks)
+    for _, mark in ipairs(marks) do
+      local text, highlights = mark_display(mark)
+      rows[#rows + 1] = { text = text, highlights = highlights }
+    end
+  end
+  if #rows == 0 then
+    rows[1] = {
+      text = "No session buffers",
+      highlights = { { { 0, #"No session buffers" }, "TelescopeResultsComment" } },
+    }
+  end
+  return rows, #buffers, mark_count
+end
+
+local function scoreboard_dimensions(row_count)
+  local columns = vim.o.columns
+  local available_height = math.max(1, vim.o.lines - vim.o.cmdheight - 2)
+  if columns < 8 or available_height < 3 then
+    return nil
+  end
+
+  local width = math.min(math.max(1, columns - 4), math.max(32, math.floor(columns * 0.82)))
+  local max_height = math.max(1, math.floor(available_height * 0.72))
+  local height = math.max(1, math.min(row_count, max_height))
+  return {
+    width = width,
+    height = height,
+    row = math.max(0, math.floor((available_height - height) / 2)),
+    col = math.max(0, math.floor((columns - width) / 2)),
+  }
+end
+
+local function trim_scoreboard_rows(rows, height)
+  if #rows <= height then
+    return rows
+  end
+  if height == 1 then
+    return { { text = ("... %d more rows"):format(#rows), highlights = {} } }
+  end
+
+  local visible = {}
+  for index = 1, height - 1 do
+    visible[index] = rows[index]
+  end
+  local text = ("    ... %d more rows"):format(#rows - height + 1)
+  visible[height] = {
+    text = text,
+    highlights = { { { 0, #text }, "TelescopeResultsComment" } },
+  }
+  return visible
+end
+
+local function apply_scoreboard_highlights(bufnr, rows)
+  scoreboard_highlight_ns = scoreboard_highlight_ns
+    or vim.api.nvim_create_namespace("dotfiles_buffer_scoreboard_highlight")
+  for row_index, row in ipairs(rows) do
+    local zero_row = row_index - 1
+    if row.current then
+      vim.api.nvim_buf_set_extmark(bufnr, scoreboard_highlight_ns, zero_row, 0, {
+        end_col = #row.text,
+        hl_eol = true,
+        hl_group = "TelescopeSelection",
+        priority = 50,
+      })
+    end
+    for _, highlight in ipairs(row.highlights or {}) do
+      vim.api.nvim_buf_set_extmark(bufnr, scoreboard_highlight_ns, zero_row, highlight[1][1], {
+        end_col = highlight[1][2],
+        hl_group = highlight[2],
+        hl_mode = "combine",
+        priority = 100,
+      })
+    end
+  end
+end
+
+local close_scoreboard
+
+local function stop_scoreboard_timer(state)
+  local timer = state and state.timer
+  if not timer then
+    return
+  end
+  state.timer = nil
+  pcall(timer.stop, timer)
+  if not timer:is_closing() then
+    timer:close()
+  end
+end
+
+close_scoreboard = function()
+  local state = scoreboard_state
+  if not state then
+    return
+  end
+  scoreboard_state = nil
+  stop_scoreboard_timer(state)
+  if scoreboard_key_ns then
+    pcall(vim.on_key, nil, scoreboard_key_ns)
+  end
+  if state.augroup then
+    pcall(vim.api.nvim_del_augroup_by_id, state.augroup)
+  end
+  if state.win and vim.api.nvim_win_is_valid(state.win) then
+    pcall(vim.api.nvim_win_close, state.win, true)
+  elseif state.buf and vim.api.nvim_buf_is_valid(state.buf) then
+    pcall(vim.api.nvim_buf_delete, state.buf, { force = true })
+  end
+end
+
+local function arm_scoreboard_timer(state, timeout_ms)
+  state.timer_generation = state.timer_generation + 1
+  local generation = state.timer_generation
+  state.timer:stop()
+  state.timer:start(
+    timeout_ms,
+    0,
+    vim.schedule_wrap(function()
+      if scoreboard_state == state and state.timer_generation == generation then
+        close_scoreboard()
+      end
+    end)
+  )
+end
+
+local function watch_scoreboard_input(state)
+  scoreboard_key_ns = scoreboard_key_ns or vim.api.nvim_create_namespace("dotfiles_buffer_scoreboard_key")
+  vim.on_key(function(_, typed)
+    if scoreboard_state ~= state or typed == "" or vim.fn.keytrans(typed) == "<Tab>" then
+      return
+    end
+    vim.schedule(function()
+      if scoreboard_state == state then
+        close_scoreboard()
+      end
+    end)
+  end, scoreboard_key_ns)
+end
+
+local function open_scoreboard()
+  local source_win = vim.api.nvim_get_current_win()
+  if vim.api.nvim_win_get_config(source_win).relative ~= "" then
+    return nil
+  end
+  local rows, buffer_count, mark_count = scoreboard_rows(source_win)
+  local dimensions = scoreboard_dimensions(#rows)
+  if not dimensions then
+    return nil
+  end
+  rows = trim_scoreboard_rows(rows, dimensions.height)
+
+  local bufnr = vim.api.nvim_create_buf(false, true)
+  vim.bo[bufnr].bufhidden = "wipe"
+  vim.bo[bufnr].buftype = "nofile"
+  vim.bo[bufnr].swapfile = false
+  vim.bo[bufnr].modifiable = true
+  vim.api.nvim_buf_set_lines(
+    bufnr,
+    0,
+    -1,
+    false,
+    vim.tbl_map(function(row)
+      return row.text
+    end, rows)
+  )
+  apply_scoreboard_highlights(bufnr, rows)
+  vim.bo[bufnr].modifiable = false
+  vim.bo[bufnr].readonly = true
+  vim.bo[bufnr].filetype = "dotfiles-buffer-scoreboard"
+
+  local ok, winid = pcall(vim.api.nvim_open_win, bufnr, false, {
+    relative = "editor",
+    width = dimensions.width,
+    height = #rows,
+    row = dimensions.row,
+    col = dimensions.col,
+    style = "minimal",
+    border = "rounded",
+    title = " Session buffers ",
+    title_pos = "center",
+    focusable = false,
+    noautocmd = true,
+    zindex = 90,
+  })
+  if not ok then
+    pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
+    return nil
+  end
+  vim.wo[winid].wrap = false
+  vim.wo[winid].cursorline = false
+  vim.wo[winid].winhighlight = table.concat({
+    "Normal:TelescopeNormal",
+    "NormalFloat:TelescopeNormal",
+    "FloatBorder:TelescopeBorder",
+    "FloatTitle:TelescopeTitle",
+  }, ",")
+
+  local state = {
+    source_win = source_win,
+    buf = bufnr,
+    win = winid,
+    buffer_count = buffer_count,
+    mark_count = mark_count,
+    pulse_count = 1,
+    timer = vim.uv.new_timer(),
+    timer_generation = 0,
+  }
+  if not state.timer then
+    pcall(vim.api.nvim_win_close, winid, true)
+    return nil
+  end
+  state.augroup = vim.api.nvim_create_augroup(("DotfilesBufferScoreboard%d"):format(bufnr), { clear = true })
+  vim.api.nvim_create_autocmd({ "ModeChanged", "TabLeave", "VimResized", "VimLeavePre" }, {
+    group = state.augroup,
+    callback = function(args)
+      if
+        scoreboard_state == state
+        and (args.event ~= "ModeChanged" or not vim.api.nvim_get_mode().mode:match("^n"))
+      then
+        close_scoreboard()
+      end
+    end,
+  })
+  vim.api.nvim_create_autocmd("WinClosed", {
+    group = state.augroup,
+    pattern = tostring(source_win),
+    once = true,
+    callback = function()
+      if scoreboard_state == state then
+        close_scoreboard()
+      end
+    end,
+  })
+
+  scoreboard_state = state
+  watch_scoreboard_input(state)
+  arm_scoreboard_timer(state, SCOREBOARD_INITIAL_TIMEOUT_MS)
+  return state
+end
+
+function M.hold_scoreboard()
+  if active_state and not active_state.finished then
+    return nil
+  end
+  local state = scoreboard_state
+  if state and state.win and vim.api.nvim_win_is_valid(state.win) then
+    state.pulse_count = state.pulse_count + 1
+    arm_scoreboard_timer(state, SCOREBOARD_REPEAT_TIMEOUT_MS)
+    return state
+  end
+  if state then
+    close_scoreboard()
+  end
+  return open_scoreboard()
+end
+
+function M.close_scoreboard()
+  close_scoreboard()
+end
+
 local function make_finder(state)
   local finders = require("telescope.finders")
   local make_entry = require("telescope.make_entry")
   local telescope_utils = require("telescope.utils")
-  local entries = buffer_info(state)
+  local buffers = buffer_info(state)
+  local entries = {}
   local max_bufnr = 1
-  for _, entry in ipairs(entries) do
+  for _, entry in ipairs(buffers) do
     max_bufnr = math.max(max_bufnr, entry.bufnr)
   end
 
@@ -171,19 +632,88 @@ local function make_finder(state)
         }
     end,
   }
+  local buffer_entry_maker = make_entry.gen_from_buffer(entry_opts)
+
+  for _, buffer in ipairs(buffers) do
+    local marks = buffer_local_marks(buffer)
+    for index = #marks, 1, -1 do
+      entries[#entries + 1] = marks[index]
+    end
+    entries[#entries + 1] = {
+      kind = "buffer",
+      key = "buffer:" .. buffer.bufnr,
+      bufnr = buffer.bufnr,
+      buffer = buffer,
+      mark_count = #marks,
+    }
+  end
+
   return finders.new_table({
     results = entries,
-    entry_maker = make_entry.gen_from_buffer(entry_opts),
+    entry_maker = function(item)
+      local buffer_entry = buffer_entry_maker(item.buffer)
+      if item.kind == "buffer" then
+        local original_display = buffer_entry.display
+        buffer_entry.kind = "buffer"
+        buffer_entry.key = item.key
+        buffer_entry.mark_count = item.mark_count
+        buffer_entry.display = function(display_entry)
+          local display, highlights = original_display(display_entry)
+          if item.mark_count == 0 then
+            return display, highlights
+          end
+          local suffix = ("  ◆ %d"):format(item.mark_count)
+          local suffix_start = #display
+          highlights = highlights or {}
+          highlights[#highlights + 1] = { { suffix_start, suffix_start + #suffix }, "DiagnosticHint" }
+          return display .. suffix, highlights
+        end
+        return buffer_entry
+      end
+
+      return make_entry.set_default_entry_mt({
+        value = item,
+        ordinal = table.concat({
+          tostring(item.bufnr),
+          buffer_entry.filename or "",
+          item.mark,
+          item.description,
+          item.source_line,
+          tostring(item.lnum),
+          tostring(item.col),
+        }, " "),
+        display = mark_display,
+        kind = "mark",
+        key = item.key,
+        bufnr = item.bufnr,
+        path = buffer_entry.path,
+        filename = buffer_entry.filename,
+        lnum = item.lnum,
+        col = item.col,
+        colend = item.col + 1,
+        mark = item.mark,
+        branch = item.branch,
+        description = item.description,
+        source_line = item.source_line,
+      }, entry_opts)
+    end,
   }),
     entries
 end
 
-local function selection_index(entries, preferred_bufnr)
+local function selection_index(entries, preferred_bufnr, preferred_mark)
   if not preferred_bufnr then
     return 1
   end
+  if preferred_mark then
+    for index, entry in ipairs(entries) do
+      if entry.kind == "mark" and entry.bufnr == preferred_bufnr and entry.mark == preferred_mark then
+        return index
+      end
+    end
+  end
   for index, entry in ipairs(entries) do
-    if entry.bufnr == preferred_bufnr then
+    if entry.kind == "buffer" and entry.bufnr == preferred_bufnr then
       return index
     end
   end
@@ -382,13 +912,15 @@ local function delete_buffer(state, bufnr, force)
   return true
 end
 
-local function refresh_picker(state, preferred_bufnr)
+local function refresh_picker(state, preferred_bufnr, preferred_mark)
   if not state.picker or not state.prompt_bufnr or not vim.api.nvim_buf_is_valid(state.prompt_bufnr) then
     return
   end
-  local finder = make_finder(state)
-  state.picker:refresh(finder, { reset_prompt = false })
   state.preferred_bufnr = preferred_bufnr
+  state.preferred_mark = preferred_mark
+  local finder, entries = make_finder(state)
+  state.picker.default_selection_index = selection_index(entries, preferred_bufnr, preferred_mark)
+  state.picker:refresh(finder, { reset_prompt = false })
 end
 
 local function save_named_buffer(bufnr)
@@ -403,11 +935,12 @@ end
 
 local open_picker
 
-local function reopen_picker(state, preferred_bufnr)
+local function reopen_picker(state, preferred_bufnr, preferred_mark)
   if state.finished or active_state ~= state then
     return
   end
   state.preferred_bufnr = preferred_bufnr
+  state.preferred_mark = preferred_mark
   local target = ensure_target_window(state)
   if not target then
     finish_cancel(state)
@@ -415,6 +948,17 @@ local function reopen_picker(state, preferred_bufnr)
   end
   vim.api.nvim_set_current_win(target)
   open_picker(state)
+end
+
+local function current_mark_position(bufnr, mark)
+  if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) or type(mark) ~= "string" or not mark:match("^[a-z]$") then
+    return nil
+  end
+  local ok, position = pcall(vim.api.nvim_buf_get_mark, bufnr, mark)
+  if not ok or type(position) ~= "table" or not position[1] or position[1] <= 0 then
+    return nil
+  end
+  return position
 end
 
 local function save_unnamed_then_delete(state, bufnr)
@@ -485,6 +1029,7 @@ end
 
 local function confirm_modified_delete(state, bufnr)
   state.preferred_bufnr = bufnr
+  state.preferred_mark = nil
   close_picker_only(state)
 
   local target = ensure_target_window(state)
@@ -503,6 +1048,7 @@ end
 
 local function confirm_terminal_delete(state, bufnr)
   state.preferred_bufnr = bufnr
+  state.preferred_mark = nil
   close_picker_only(state)
 
   local target = ensure_target_window(state)
@@ -531,9 +1077,84 @@ local function confirm_terminal_delete(state, bufnr)
   end)
 end
 
+local function edit_mark_description(state)
+  local selection = require("telescope.actions.state").get_selected_entry()
+  if not selection or selection.kind ~= "mark" then
+    notify("请选择一个 mark 子行来编辑说明", vim.log.levels.WARN)
+    return
+  end
+
+  local bufnr = selection.bufnr
+  local mark = selection.mark
+  if not current_mark_position(bufnr, mark) then
+    notify(("mark %s 已不存在"):format(mark), vim.log.levels.WARN)
+    refresh_picker(state, bufnr)
+    return
+  end
+
+  state.preferred_bufnr = bufnr
+  state.preferred_mark = mark
+  close_picker_only(state)
+  local target = ensure_target_window(state)
+  if not target then
+    finish_cancel(state)
+    return
+  end
+  vim.api.nvim_set_current_win(target)
+
+  vim.ui.input({
+    prompt = ("Mark %s description: "):format(mark),
+    default = mark_descriptions(bufnr)[mark] or "",
+    kind = "dotfiles_mark_description",
+  }, function(description)
+    if state.finished or active_state ~= state then
+      return
+    end
+    if description == nil then
+      reopen_picker(state, bufnr, mark)
+      return
+    end
+    if not current_mark_position(bufnr, mark) then
+      notify(("mark %s 已不存在"):format(mark), vim.log.levels.WARN)
+      reopen_picker(state, bufnr)
+      return
+    end
+    local ok, err = set_mark_description(bufnr, mark, description)
+    if not ok then
+      notify("保存 mark 说明失败: " .. tostring(err), vim.log.levels.ERROR)
+    end
+    reopen_picker(state, bufnr, mark)
+  end)
+end
+
+local function delete_mark_selection(state, selection)
+  local bufnr = selection.bufnr
+  local mark = selection.mark
+  if not current_mark_position(bufnr, mark) then
+    notify(("mark %s 已不存在"):format(mark), vim.log.levels.WARN)
+    refresh_picker(state, bufnr)
+    return
+  end
+
+  local ok, deleted = pcall(vim.api.nvim_buf_del_mark, bufnr, mark)
+  if not ok or not deleted then
+    notify(("无法删除 mark %s"):format(mark), vim.log.levels.ERROR)
+    return
+  end
+  local description_ok, description_err = set_mark_description(bufnr, mark, "")
+  if not description_ok then
+    notify("清理 mark 说明失败: " .. tostring(description_err), vim.log.levels.WARN)
+  end
+  refresh_picker(state, bufnr)
+end
+
 local function delete_selection(state)
   local action_state = require("telescope.actions.state")
   local selection = action_state.get_selected_entry()
+  if selection and selection.kind == "mark" then
+    delete_mark_selection(state, selection)
+    return
+  end
   local bufnr = selection and selection.bufnr
   if protected_buffer(bufnr) then
     notify("没有可删除的 buffer", vim.log.levels.WARN)
@@ -576,12 +1197,21 @@ local function select_buffer(state)
     return
   end
 
+  local mark_position
+  if selection.kind == "mark" then
+    mark_position = current_mark_position(bufnr, selection.mark)
+    if not mark_position then
+      notify(("mark %s 已不存在"):format(selection.mark), vim.log.levels.WARN)
+      refresh_picker(state, bufnr)
+      return
+    end
+  end
+
   local ok, err = pcall(vim.api.nvim_win_set_buf, target, bufnr)
   if not ok or not valid_editor_window(target) then
     notify("无法在安全目标窗口打开 buffer: " .. tostring(err), vim.log.levels.ERROR)
     return
   end
-
   retain_temporary_window(state, target)
   close_picker_only(state)
   state.finished = true
@@ -591,6 +1221,21 @@ local function select_buffer(state)
   close_temporary_windows(state, target)
   if vim.api.nvim_win_is_valid(target) then
     vim.api.nvim_set_current_win(target)
+  end
+  if mark_position then
+    vim.schedule(function()
+      if not vim.api.nvim_win_is_valid(target) or vim.api.nvim_win_get_buf(target) ~= bufnr then
+        return
+      end
+      local cursor_ok, cursor_err = pcall(vim.api.nvim_win_set_cursor, target, mark_position)
+      if not cursor_ok then
+        notify("无法跳转到 mark: " .. tostring(cursor_err), vim.log.levels.ERROR)
+        return
+      end
+      pcall(vim.api.nvim_win_call, target, function()
+        vim.cmd("normal! zv")
+      end)
+    end)
   end
   if vim.bo[bufnr].buftype == "terminal" then
     vim.schedule(function()
@@ -617,6 +1262,9 @@ local function attach_mappings(state, prompt_bufnr, map)
   local function do_delete()
     delete_selection(state)
   end
+  local function do_edit_mark()
+    edit_mark_description(state)
+  end
 
   actions.select_default:replace(do_select)
   actions.select_horizontal:replace(do_select)
@@ -626,6 +1274,7 @@ local function attach_mappings(state, prompt_bufnr, map)
   map("n", "q", do_cancel)
   map("n", "<Esc>", do_cancel)
   map("n", "dd", do_delete)
+  map("n", "e", do_edit_mark)
   map("n", "p", function()
     action_layout.toggle_preview(prompt_bufnr)
   end)
@@ -678,7 +1327,7 @@ local function watch_target_window(state, prompt_bufnr)
         require("telescope.actions").close(prompt_bufnr)
       end
       state.target_win = nil
-      reopen_picker(state, state.preferred_bufnr)
+      reopen_picker(state, state.preferred_bufnr, state.preferred_mark)
     end)
   end
 
@@ -724,7 +1373,7 @@ open_picker = function(state)
     sorter = conf.generic_sorter({}),
     previewer = conf.grep_previewer({}),
     preview = { hide_on_startup = true },
-    default_selection_index = selection_index(entries, state.preferred_bufnr),
+    default_selection_index = selection_index(entries, state.preferred_bufnr, state.preferred_mark),
     cache_picker = false,
     get_window_options = window_options,
     attach_mappings = function(prompt_bufnr, map)
@@ -745,6 +1394,7 @@ open_picker = function(state)
 end
 
 function M.open()
+  close_scoreboard()
   if active_state and not active_state.finished then
     local prompt = active_state.prompt_bufnr
     if prompt and vim.api.nvim_buf_is_valid(prompt) then
@@ -766,6 +1416,7 @@ function M.open()
     target_win = valid_editor_window(source_win) and source_win or nil,
     temporary_windows = {},
     preferred_bufnr = valid_editor_window(source_win) and vim.api.nvim_win_get_buf(source_win) or nil,
+    preferred_mark = nil,
     finished = false,
   }
   active_state = state
@@ -802,6 +1453,10 @@ end
 
 function M._active_state()
   return active_state
+end
+
+function M._scoreboard_state()
+  return scoreboard_state
 end
 
 function M._delete_choices()
