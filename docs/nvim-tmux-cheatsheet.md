@@ -231,7 +231,8 @@ browser 内（telescope 默认键）：
 | 按键 / 命令 | 操作 |
 |-------------|------|
 | `Space fb` / `:ls` | 打开同一套 Telescope session buffer 管理器；默认 normal mode |
-| 管理器内 `j` / `k` | 移动选择并实时预览 buffer 内容 |
+| 管理器内 `j` / `k` | 移动选择；完整路径保留，只有文件名高亮，选中行也保持文件名颜色 |
+| 管理器内 `p` | 显示 / 隐藏所选 buffer 的预览；默认隐藏 |
 | 管理器内 `Enter` | 在当前安全窗口打开选择；完整 terminal 选中后自动进入输入，从底部 shell drawer 发起不会覆盖 drawer |
 | 管理器内 `dd` | 删除选择；完整 terminal 先确认再结束进程，clean 文件 buffer 直接删，modified buffer 先选择 Cancel / 保存后删除 / 丢弃后删除 |
 | 管理器内 `q` / `Esc` | 关闭并回到发起窗口 |
@@ -240,7 +241,7 @@ browser 内（telescope 默认键）：
 | `:bd` | 关闭当前 buffer |
 | `:e filename` | 打开/新建文件 |
 
-> 管理器列出当前 Nvim session 的普通 listed buffer，包括 `Space t` 完整 terminal、Codex 和 Grok；它们可预览、切换，`dd` 确认后可结束进程。底部普通 shell drawer buffer 始终不进入列表或删除范围。picker 和删除确认都限制在安全目标窗口矩形内；从完整 terminal 或 agent 发起时直接复用当前窗口，从底部 drawer 发起时才路由到同 tab 的普通编辑窗口。
+> 管理器列出当前 Nvim session 的普通 listed buffer，包括 `Space t` 完整 terminal、Codex 和 Grok；picker 不受 split 尺寸影响，始终相对整个 Nvim 居中，预览默认隐藏且按 `p` 后在列表上方展开。选择和删除仍绑定安全目标窗口：从完整 terminal 或 agent 发起时直接复用当前窗口，从底部 drawer 发起时才路由到同 tab 的普通编辑窗口；底部 shell drawer buffer 始终不进入列表或删除范围。
 
 ---
 

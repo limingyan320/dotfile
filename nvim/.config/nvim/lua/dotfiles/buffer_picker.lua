@@ -3,6 +3,10 @@ local M = {}
 local config
 local active_state
 local state_sequence = 0
+local filename_highlight_ns
+local SELECTED_FILENAME_HIGHLIGHT = "DotfilesBufferPickerSelectedFilename"
+local TELESCOPE_SELECTION_PRIORITY = 4095
+local FILENAME_HIGHLIGHT_PRIORITY = 4096
 
 local DELETE_CANCEL = "Cancel"
 local DELETE_SAVE = "Save and delete"
@@ -147,6 +151,7 @@ end
 local function make_finder(state)
   local finders = require("telescope.finders")
   local make_entry = require("telescope.make_entry")
+  local telescope_utils = require("telescope.utils")
   local entries = buffer_info(state)
   local max_bufnr = 1
   for _, entry in ipairs(entries) do
@@ -156,6 +161,15 @@ local function make_finder(state)
   local entry_opts = {
     bufnr_width = #tostring(max_bufnr),
     cwd = vim.uv.cwd(),
+    path_display = function(_, path)
+      local filename = telescope_utils.path_tail(path)
+      local filename_start = math.max(0, #path - #filename)
+      return path,
+        {
+          { { 0, filename_start }, "TelescopeResultsComment" },
+          { { filename_start, #path }, "TelescopeResultsIdentifier" },
+        }
+    end,
   }
   return finders.new_table({
     results = entries,
@@ -176,40 +190,96 @@ local function selection_index(entries, preferred_bufnr)
   return 1
 end
 
-local function translate_layout(layout, row, col)
-  for _, name in ipairs({ "preview", "results", "prompt" }) do
-    local window = layout[name]
-    if window then
-      window.line = window.line + row
-      window.col = window.col + col
-    end
-  end
-  return layout
-end
-
-local function window_options(state, picker)
-  local target = state.target_win
-  if valid_editor_window(target) then
-    state.last_target_position = vim.api.nvim_win_get_position(target)
-    state.last_target_width = vim.api.nvim_win_get_width(target)
-    state.last_target_height = vim.api.nvim_win_get_height(target)
-  end
-
-  local position = state.last_target_position or { 0, 0 }
-  local width = state.last_target_width or vim.o.columns
-  local height = state.last_target_height or math.max(3, vim.o.lines - vim.o.cmdheight)
+local function window_options(picker)
+  local width = vim.o.columns
+  local height = math.max(3, vim.o.lines - vim.o.cmdheight)
   local strategies = require("telescope.pickers.layout_strategies")
-  local layout = strategies.horizontal(picker, width, height, {
-    horizontal = {
-      width = width,
-      height = height,
+  return strategies.vertical(picker, width, height, {
+    vertical = {
+      width = 0.82,
+      height = picker.previewer and 0.82 or 0.62,
       preview_cutoff = 1,
-      preview_width = width >= 90 and 0.55 or 0.5,
+      preview_height = 0.5,
       prompt_position = "bottom",
       mirror = false,
     },
   })
-  return translate_layout(layout, position[1], position[2])
+end
+
+local function preserve_selected_filename_highlight(picker)
+  filename_highlight_ns = filename_highlight_ns or vim.api.nvim_create_namespace("dotfiles_buffer_picker_filename")
+  local highlighter = picker.highlighter
+  local original_hi_display = highlighter.hi_display
+  local original_hi_selection = highlighter.hi_selection
+  local original_clear_display = highlighter.clear_display
+  local filename_ranges = {}
+
+  highlighter.hi_display = function(self, row, prefix, display_highlights)
+    original_hi_display(self, row, prefix, display_highlights)
+    filename_ranges[row] = nil
+    for _, highlight in ipairs(display_highlights or {}) do
+      if highlight[2] == "TelescopeResultsIdentifier" then
+        filename_ranges[row] = { #prefix + highlight[1][1], #prefix + highlight[1][2] }
+      end
+    end
+  end
+
+  highlighter.hi_selection = function(self, row, caret)
+    original_hi_selection(self, row, caret)
+
+    local results_bufnr = self.picker.results_bufnr
+    if not results_bufnr or not vim.api.nvim_buf_is_valid(results_bufnr) then
+      return
+    end
+    vim.api.nvim_buf_clear_namespace(results_bufnr, filename_highlight_ns, 0, -1)
+    local range = filename_ranges[row]
+    if range then
+      local selection_ns = vim.api.nvim_get_namespaces().telescope_selection
+      if selection_ns then
+        local selection_marks = vim.api.nvim_buf_get_extmarks(
+          results_bufnr,
+          selection_ns,
+          { row, 0 },
+          { row, -1 },
+          { details = true }
+        )
+        for _, mark in ipairs(selection_marks) do
+          local details = mark[4]
+          if details.hl_group == "TelescopeSelection" then
+            vim.api.nvim_buf_set_extmark(results_bufnr, selection_ns, mark[2], mark[3], {
+              id = mark[1],
+              end_row = details.end_row,
+              end_col = details.end_col,
+              hl_eol = details.hl_eol,
+              hl_group = details.hl_group,
+              priority = TELESCOPE_SELECTION_PRIORITY,
+            })
+          end
+        end
+      end
+
+      local selection = vim.api.nvim_get_hl(0, { name = "TelescopeSelection", link = false })
+      local identifier = vim.api.nvim_get_hl(0, { name = "TelescopeResultsIdentifier", link = false })
+      local selected_filename = vim.tbl_extend("force", selection, identifier)
+      selected_filename.bg = selection.bg
+      selected_filename.ctermbg = selection.ctermbg
+      vim.api.nvim_set_hl(0, SELECTED_FILENAME_HIGHLIGHT, selected_filename)
+      vim.api.nvim_buf_set_extmark(results_bufnr, filename_highlight_ns, row, range[1], {
+        end_col = range[2],
+        hl_group = SELECTED_FILENAME_HIGHLIGHT,
+        priority = FILENAME_HIGHLIGHT_PRIORITY,
+      })
+    end
+  end
+
+  highlighter.clear_display = function(self)
+    local results_bufnr = self.picker.results_bufnr
+    if results_bufnr and vim.api.nvim_buf_is_valid(results_bufnr) then
+      vim.api.nvim_buf_clear_namespace(results_bufnr, filename_highlight_ns, 0, -1)
+    end
+    filename_ranges = {}
+    return original_clear_display(self)
+  end
 end
 
 local function clear_target_watch(state)
@@ -537,6 +607,7 @@ end
 
 local function attach_mappings(state, prompt_bufnr, map)
   local actions = require("telescope.actions")
+  local action_layout = require("telescope.actions.layout")
   local function do_cancel()
     cancel(state)
   end
@@ -555,6 +626,9 @@ local function attach_mappings(state, prompt_bufnr, map)
   map("n", "q", do_cancel)
   map("n", "<Esc>", do_cancel)
   map("n", "dd", do_delete)
+  map("n", "p", function()
+    action_layout.toggle_preview(prompt_bufnr)
+  end)
   map("i", "<Esc>", do_cancel)
   map("i", "<C-c>", do_cancel)
   map("n", "<C-q>", actions.nop)
@@ -630,10 +704,10 @@ open_picker = function(state)
     finish_cancel(state)
     return
   end
-  local width = vim.api.nvim_win_get_width(target)
-  local height = vim.api.nvim_win_get_height(target)
+  local width = vim.o.columns
+  local height = math.max(3, vim.o.lines - vim.o.cmdheight)
   if width < 3 or height < 3 then
-    notify("目标窗口太小，无法安全显示 buffer picker", vim.log.levels.ERROR)
+    notify("Nvim 界面太小，无法显示 buffer picker", vim.log.levels.ERROR)
     finish_cancel(state)
     return
   end
@@ -649,11 +723,10 @@ open_picker = function(state)
     finder = finder,
     sorter = conf.generic_sorter({}),
     previewer = conf.grep_previewer({}),
+    preview = { hide_on_startup = true },
     default_selection_index = selection_index(entries, state.preferred_bufnr),
     cache_picker = false,
-    get_window_options = function(picker)
-      return window_options(state, picker)
-    end,
+    get_window_options = window_options,
     attach_mappings = function(prompt_bufnr, map)
       state.prompt_bufnr = prompt_bufnr
       watch_target_window(state, prompt_bufnr)
@@ -666,6 +739,7 @@ open_picker = function(state)
 
   vim.api.nvim_set_current_win(target)
   state.picker = pickers.new(opts, {})
+  preserve_selected_filename_highlight(state.picker)
   state.picker:find()
   state.prompt_bufnr = state.picker.prompt_bufnr
 end

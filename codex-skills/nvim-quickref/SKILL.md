@@ -27,7 +27,7 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 - `<M-a>` 用 `j` / `k` 菜单选择 Codex 或 Grok，选择结果保存在本机 Neovim state；`<M-/>` 对两者都显示 / 隐藏当前普通窗口里的专属 full terminal buffer，再按回到原 buffer，若已显示在其他窗口则直接聚焦
 - Codex 以 `codex --yolo --no-alt-screen`、Grok 以 `grok --yolo` 从首次打开时的 git 根启动；两者都是可移动、分屏、关闭并进入 buffer 管理器的普通 listed session buffer。terminal-normal 滚离最新输出后会锁定 cursor / topline，手动滚到底部、按 `G` 或进入 terminal-input 才解锁；Codex 还可用 `[a` / `]a` 跳回答、`gx` 打开路径，并在 full terminal 位于前台、当前窗口且最新输出可见时自动 check 完成未读及关闭 macOS popup
 - 底部 drawer 只保留普通 shell：始终跟随当前 tab、全宽贴底，不参与上方窗口布局；`<C-/>` / `<C-_>` 切换，`<M-+>` / `<M-->`（含 `<M-=>`）调整 drawer 高度
-- `<leader>fb` 和精确输入 `:ls<CR>` 打开同一个安全 Telescope session buffer 管理器；`<leader>t` 完整 terminal、Codex 和 Grok 都可列出、预览、切换，`dd` 确认后可结束进程；底部 shell drawer buffer 永不进入列表或删除范围
+- `<leader>fb` 和精确输入 `:ls<CR>` 打开同一个全局居中的安全 Telescope session buffer 管理器；完整路径中只高亮文件名，选中行也保留文件名颜色，预览默认隐藏并在 normal mode 用 `p` 切换；`<leader>t` 完整 terminal、Codex 和 Grok 都可列出、切换，`dd` 确认后可结束进程；底部 shell drawer buffer 永不进入列表或删除范围
 - Neovim 0.12 live session：交互式 shell 的 `nvim` / `nvim .` / `vim` 由独立的 `dotfiles-nvim-host` tmux server 托管，host 需通过 RPC 探活才会接入 UI；nvim 端在环境变量缺失时会补与 `.shared_rc` 相同的默认 session 目录 / tmux server，新建失败会清理本次刚拉起的空 host；terminal 意外关闭后进程仍存活；`<leader>d` 主动脱离；`<leader>fs` 打开原生 Session Dashboard，聚焦 session 时自动展开 tag，`<leader>fS` 直接进入当前 session 的 Tag 模式；Dashboard 支持连接、新建、重命名、Session / Tag 回收站、Codex 状态动画和人工进度日志；live Session Trash 保留 24 小时且到期时跳过 attached UI / working Codex，Tag Trash 保留 30 天；已结束 Session 的 Tag 以 `ENDED` / `Past Session Notes` 保留且可手动整组删除；日志约 400ms debounce 自动保存；跨 session RPC 总超时 700ms；普通 `tmux ls` 不显示隐藏 host
 - netrw 禁用（`vim.g.loaded_netrw = 1`），文件浏览全走 oil
 
@@ -127,9 +127,9 @@ picker 内自定义键位：
 | `<M-s>` | `select_horizontal`（上下分屏打开） |
 | `<C-h>` | `toggle_hidden`：重开 picker，打开 `hidden = true` + `no_ignore = true`，**保留当前输入** |
 
-buffer 管理器是独立的 Telescope picker，默认 normal mode：`j` / `k` 移动并实时预览，`Enter` 在当前安全 session-buffer 窗口打开，`dd` 删除，`q` / `Esc` 取消并恢复发起窗口。`<leader>t` 的完整 terminal 也在列表中，选择后自动进入 terminal 输入；`dd` 会先确认再结束进程并关闭 buffer。clean 文件 buffer 直接删除；modified buffer 弹出默认停在 `Cancel` 的三项选择：`Cancel`、`Save and delete`、`Discard changes and delete`；未命名 buffer 选择保存时再询问文件路径。所有 select / split / tab 打开 action 都被收口到重新校验后的安全窗口，quickfix 批量导出在此 picker 内禁用。
+buffer 管理器是独立的全局居中 Telescope picker，默认 normal mode：`j` / `k` 移动，完整路径中只有文件名高亮，选中行也保留文件名颜色，预览默认隐藏并用 `p` 切换；开启后预览在列表上方展开。`Enter` 在当前安全 session-buffer 窗口打开，`dd` 删除，`q` / `Esc` 取消并恢复发起窗口。`<leader>t` 的完整 terminal 也在列表中，选择后自动进入 terminal 输入；`dd` 会先确认再结束进程并关闭 buffer。clean 文件 buffer 直接删除；modified buffer 弹出默认停在 `Cancel` 的三项选择：`Cancel`、`Save and delete`、`Discard changes and delete`；未命名 buffer 选择保存时再询问文件路径。所有 select / split / tab 打开 action 都被收口到重新校验后的安全窗口，quickfix 批量导出在此 picker 内禁用。
 
-picker 的 results / preview / prompt 始终限制在目标窗口矩形内；drawer 可见时不会改变其 buffer 或高度。从底部 shell drawer 发起会复用同 tab 的普通编辑窗口；没有安全目标时才在 drawer 上方创建 unlisted `nofile` 临时 split，取消时清掉，选中时保留。完整 terminal / agent 本身是安全目标，picker 直接复用其窗口，选择其他 buffer 时不产生额外 split；目标窗口中途变成 drawer 时会重新路由。
+picker 的 results / preview / prompt 始终相对整个 Nvim 居中，不受当前 horizontal / vertical split 尺寸影响；预览打开时浮窗整体增高，但完整文件路径仍占满列表宽度。显示区域与选择目标分离：drawer 可见时不会改变其 buffer 或高度，从底部 shell drawer 发起会复用同 tab 的普通编辑窗口；没有安全目标时才在 drawer 上方创建 unlisted `nofile` 临时 split，取消时清掉，选中时保留。完整 terminal / agent 本身是安全目标，picker 直接复用其窗口，选择其他 buffer 时不产生额外 split；目标窗口中途变成 drawer 时会重新路由。
 
 file_browser 扩展 opts：`hidden = true`, `grouped = true`（目录排前面）, `respect_gitignore = false`, `hijack_netrw = false`（交给 oil）
 
