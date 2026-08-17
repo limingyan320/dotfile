@@ -230,7 +230,7 @@ browser 内（telescope 默认键）：
 
 | 按键 / 命令 | 操作 |
 |-------------|------|
-| normal `Tab`（按住） | 只读显示与 `Space fb` 同源的 session buffer / mark 信息；不夺取焦点，停止连发后自动消失 |
+| normal `Tab`（按住） | 打开不夺取焦点的只读 session buffer / mark 导航层；`j` / `k` 选择，`Enter` 跳转，松开或 `Esc` / `q` 取消 |
 | normal `Ctrl+I` / `Ctrl+O` | 继续使用原生 jumplist 前进 / 后退，不受 `Tab` 视图影响 |
 | `Space m` | 在当前普通 buffer 的光标处添加第一个空闲的 `a-z` mark；不会覆盖，26 个占满时只提示 |
 | `Space fb` / `:ls` | 打开同一套 Telescope session buffer 管理器；默认 normal mode |
@@ -247,7 +247,7 @@ browser 内（telescope 默认键）：
 
 > 管理器列出当前 Nvim session 的普通 listed buffer，包括 `Space t` 完整 terminal、Codex 和 Grok；picker 不受 split 尺寸影响，始终相对整个 Nvim 居中，预览默认隐藏且按 `p` 后在列表上方展开。选择和删除仍绑定安全目标窗口：从完整 terminal 或 agent 发起时直接复用当前窗口，从底部 drawer 发起时才路由到同 tab 的普通编辑窗口；底部 shell drawer buffer 始终不进入列表或删除范围。
 
-> normal mode 按住 `Tab` 打开的 scoreboard 复用相同的 buffer 排序、完整路径、当前项高亮、mark、说明和数量，但它是不可聚焦的只读浮窗，没有搜索、选择、预览、跳转或删除动作。终端不会传递真正的 key-up：首次按下保留约 650ms 等待系统连发，连发开始后在最后一次 `Tab` 约 130ms 后关闭；按其他键、切换模式 / tab 或调整界面大小会立即回收。`Ctrl+I` 被单独映射回原生 jumplist 前进；终端链路若无法区分 `Tab` / `Ctrl+I`，则仍受协议本身限制。
+> normal mode 按住 `Tab` 打开的 scoreboard 复用相同的 buffer 排序、完整路径、mark、说明和数量；它是不夺取焦点、不可修改的临时导航层，没有搜索、预览或删除动作。`j` / `k`（也支持方向键和数字前缀）只移动高亮选择，不会移动底层光标；`Enter` 才在安全目标窗口打开 buffer，mark 子行会精确跳到行列，`Esc` / `q` 取消。终端不会传递真正的 key-up：首次按下保留约 650ms 等待系统连发，连发开始后在最后一次 `Tab` 约 130ms 后关闭；每次导航会再保留约 650ms 等待确认，超时只取消而不跳转。其他输入仍进入原 buffer 并关闭视图，模式 / tab 切换、窗口关闭或界面缩放也会立即回收。`Ctrl+I` 被单独映射回原生 jumplist 前进；终端链路若无法区分 `Tab` / `Ctrl+I`，则仍受协议本身限制。
 
 > 普通文件 buffer 中用 `m{a-z}` 手动设置、或用 `Space m` 自动分配的原生小写 mark，会以 `├/└ 字母 行:列 说明` 显示在所属 buffer 下方，父行用 `◆ 数量` 汇总。自动分配总是复用 `a-z` 中第一个空位，绝不覆盖已有 mark；未写说明时回退显示该行代码。说明与小写 mark 一样采用 buffer 生命周期：live session detach / reconnect 后仍保留，`:bd` 或真正退出 Nvim 后消失。
 

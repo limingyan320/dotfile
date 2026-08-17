@@ -27,7 +27,7 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 - `<M-a>` 用 `j` / `k` 菜单选择 Codex 或 Grok，选择结果保存在本机 Neovim state；`<M-/>` 对两者都显示 / 隐藏当前普通窗口里的专属 full terminal buffer，再按回到原 buffer，若已显示在其他窗口则直接聚焦
 - Codex 以 `codex --yolo --no-alt-screen`、Grok 以 `grok --yolo` 从首次打开时的 git 根启动；两者都是可移动、分屏、关闭并进入 buffer 管理器的普通 listed session buffer。terminal-normal 滚离最新输出后会锁定 cursor / topline，手动滚到底部、按 `G` 或进入 terminal-input 才解锁；Codex 还可用 `[a` / `]a` 跳回答、`gx` 打开路径，并在 full terminal 位于前台、当前窗口且最新输出可见时自动 check 完成未读及关闭 macOS popup
 - 底部 drawer 只保留普通 shell：始终跟随当前 tab、全宽贴底，不参与上方窗口布局；`<C-/>` / `<C-_>` 切换，`<M-+>` / `<M-->`（含 `<M-=>`）调整 drawer 高度
-- normal mode 按住 `<Tab>` 会显示与 buffer 管理器同源、全局居中的只读 session buffer / mark scoreboard，不夺取焦点；首次按下约 650ms 等待系统连发，连发后最后一次输入约 130ms 自动关闭，其他按键、模式 / tab 切换或界面缩放立即回收；`<C-I>` 单独保留原生 jumplist 前进
+- normal mode 按住 `<Tab>` 会显示与 buffer 管理器同源、全局居中的只读 session buffer / mark scoreboard，不夺取焦点；`j` / `k` 选择、`Enter` 跳转，`Esc` / `q` 或超时取消；首次按下约 650ms 等待系统连发，连发后最后一次 `<Tab>` 约 130ms 自动关闭，每次导航再保留约 650ms 等待确认；`<C-I>` 单独保留原生 jumplist 前进
 - `<leader>m` 在当前普通 listed buffer 的光标处自动添加 `a-z` 中第一个空闲 mark，绝不覆盖，26 个占满时只提示；`<leader>fb` 和精确输入 `:ls<CR>` 打开同一个全局居中的安全 Telescope session buffer 管理器，完整路径中只高亮文件名，mark 以可选子行显示并支持说明 / 精确跳转，预览默认隐藏并在 normal mode 用 `p` 切换；`<leader>t` 完整 terminal、Codex 和 Grok 都可列出、切换，`dd` 确认后可结束进程；底部 shell drawer buffer 永不进入列表或删除范围
 - Neovim 0.12 live session：交互式 shell 的 `nvim` / `nvim .` / `vim` 由独立的 `dotfiles-nvim-host` tmux server 托管，host 需通过 RPC 探活才会接入 UI；nvim 端在环境变量缺失时会补与 `.shared_rc` 相同的默认 session 目录 / tmux server，新建失败会清理本次刚拉起的空 host；terminal 意外关闭后进程仍存活；`<leader>d` 主动脱离；`<leader>fs` 打开原生 Session Dashboard，聚焦 session 时自动展开 tag，`<leader>fS` 直接进入当前 session 的 Tag 模式；Dashboard 支持连接、新建、重命名、Session / Tag 回收站、Codex 状态动画和人工进度日志；live Session Trash 保留 24 小时且到期时跳过 attached UI / working Codex，Tag Trash 保留 30 天；已结束 Session 的 Tag 以 `ENDED` / `Past Session Notes` 保留且可手动整组删除；日志约 400ms debounce 自动保存；跨 session RPC 总超时 700ms；普通 `tmux ls` 不显示隐藏 host
 - netrw 禁用（`vim.g.loaded_netrw = 1`），文件浏览全走 oil
@@ -43,7 +43,7 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 | n | `<C-w>c/q` | 关闭当前普通窗口；`<leader>t` 完整 terminal 同样可关闭，底部 drawer 内拒绝执行 |
 | n | `<C-w>o` | 只保留当前普通 session window 和底部 drawer；可从完整 terminal 执行，drawer 内拒绝执行 |
 | n | `<leader>d` | detach 当前 Nvim UI，完整保留窗口、buffer、terminal / agent 进程供稍后恢复 |
-| n | `<Tab>`（按住） | 不夺取焦点地显示只读 session buffer / mark scoreboard；停止连发后自动关闭 |
+| n | `<Tab>`（按住） | 打开不夺取焦点的只读 session buffer / mark 导航层；`j` / `k` 选择，`Enter` 跳转，松开或 `Esc` / `q` 取消 |
 | n | `<C-I>` / `<C-O>` | 原生 jumplist 前进 / 后退；`<C-I>` 与 scoreboard 的 `<Tab>` 分开映射 |
 | n | `<leader>m` | 在当前普通 listed buffer 的光标处添加第一个空闲的 `a-z` mark；不覆盖，26 个占满时只提示 |
 | n | `<leader>yp` | 复制当前 buffer 绝对路径到 `+` 和 `"` |
@@ -133,7 +133,7 @@ picker 内自定义键位：
 
 buffer 管理器是独立的全局居中 Telescope picker，默认 normal mode：`j` / `k` 在 buffer 与 mark 行间移动，完整路径中只有文件名高亮，选中行也保留文件名 / mark 字母颜色，预览默认隐藏并用 `p` 切换；开启后预览在列表上方展开。普通文件 buffer 的原生 `a-z` mark 以 `├/└ 字母 行:列 说明` 子行显示，父行用 `◆ 数量` 汇总；编辑时可用 `<leader>m` 自动复用第一个空闲字母且永不覆盖，26 个占满时拒绝新增。未写说明时回退显示代码行。mark 行 `Enter` 精确跳到行列，`e` 编辑一行说明，`dd` 删除 mark 和说明；说明存于 buffer-local 状态，detach / reconnect 后保留，`:bd` 或 Nvim 退出后随小写 mark 消失。buffer 行 `Enter` / `dd` 保持原打开和删除逻辑，`q` / `Esc` 取消并恢复发起窗口。`<leader>t` 的完整 terminal 也在列表中，选择后自动进入 terminal 输入；`dd` 会先确认再结束进程并关闭 buffer。clean 文件 buffer 直接删除；modified buffer 弹出默认停在 `Cancel` 的三项选择：`Cancel`、`Save and delete`、`Discard changes and delete`；未命名 buffer 选择保存时再询问文件路径。所有 select / split / tab 打开 action 都被收口到重新校验后的安全窗口，quickfix 批量导出在此 picker 内禁用。
 
-normal mode 的 `<Tab>` scoreboard 只复用上述数据和视觉层：它是不可聚焦、不可修改的普通浮窗，不创建 Telescope prompt，也没有搜索、选择、预览、跳转或删除动作。终端没有可供 Lua 使用的真实松开事件，因此用系统连发作为心跳；快速点按最多停留约 650ms，进入连发后在最后一次 `<Tab>` 约 130ms 后消失。任何其他输入、模式 / tab 切换、窗口关闭或界面缩放都会提前回收。
+normal mode 的 `<Tab>` scoreboard 复用上述数据和视觉层：它是不夺取焦点、不可修改的普通浮窗，不创建 Telescope prompt，也没有搜索、预览或删除动作。浮窗存活时会临时接管发起 buffer 的 `j` / `k`（兼容方向键和数字前缀）来移动高亮选择，底层光标不动；`Enter` 才在安全目标窗口打开 buffer 或精确跳到 mark，`Esc` / `q` 取消，关闭时完整恢复原有 buffer-local 映射。终端没有可供 Lua 使用的真实松开事件，因此用系统连发作为心跳；快速点按最多停留约 650ms，进入连发后在最后一次 `<Tab>` 约 130ms 后消失，每次导航会再保留约 650ms 等待确认，超时只取消。其他输入仍进入原 buffer 并关闭视图，模式 / tab 切换、窗口关闭或界面缩放也会提前回收。
 
 picker 的 results / preview / prompt 始终相对整个 Nvim 居中，不受当前 horizontal / vertical split 尺寸影响；预览打开时浮窗整体增高，但完整文件路径仍占满列表宽度。显示区域与选择目标分离：drawer 可见时不会改变其 buffer 或高度，从底部 shell drawer 发起会复用同 tab 的普通编辑窗口；没有安全目标时才在 drawer 上方创建 unlisted `nofile` 临时 split，取消时清掉，选中时保留。完整 terminal / agent 本身是安全目标，picker 直接复用其窗口，选择其他 buffer 时不产生额外 split；目标窗口中途变成 drawer 时会重新路由。
 

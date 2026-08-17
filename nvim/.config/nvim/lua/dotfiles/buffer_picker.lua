@@ -13,6 +13,7 @@ local FILENAME_HIGHLIGHT_PRIORITY = 4096
 local MARK_DESCRIPTIONS_VAR = "dotfiles_mark_descriptions"
 local SCOREBOARD_INITIAL_TIMEOUT_MS = 650
 local SCOREBOARD_REPEAT_TIMEOUT_MS = 130
+local SCOREBOARD_NAVIGATION_TIMEOUT_MS = 650
 
 local DELETE_CANCEL = "Cancel"
 local DELETE_SAVE = "Save and delete"
@@ -210,6 +211,17 @@ local function set_mark_description(bufnr, mark, description)
   return ok, err
 end
 
+local function current_mark_position(bufnr, mark)
+  if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) or type(mark) ~= "string" or not mark:match("^[a-z]$") then
+    return nil
+  end
+  local ok, position = pcall(vim.api.nvim_buf_get_mark, bufnr, mark)
+  if not ok or type(position) ~= "table" or not position[1] or position[1] <= 0 then
+    return nil
+  end
+  return position
+end
+
 local function buffer_local_marks(entry)
   local bufnr = entry.bufnr
   if not vim.api.nvim_buf_is_valid(bufnr) or vim.bo[bufnr].buftype ~= "" then
@@ -328,14 +340,14 @@ local function scoreboard_buffer_row(entry, bufnr_width, mark_count)
     text = text,
     highlights = highlights,
     current = entry.flag == "%",
+    item = {
+      kind = "buffer",
+      bufnr = entry.bufnr,
+    },
   }
 end
 
-local function scoreboard_rows(source_win)
-  local state = {
-    target_win = valid_editor_window(source_win) and source_win or nil,
-    temporary_windows = {},
-  }
+local function scoreboard_rows(state)
   local buffers = buffer_info(state)
   local bufnr_width = 1
   for _, entry in ipairs(buffers) do
@@ -350,7 +362,7 @@ local function scoreboard_rows(source_win)
     rows[#rows + 1] = scoreboard_buffer_row(entry, bufnr_width, #marks)
     for _, mark in ipairs(marks) do
       local text, highlights = mark_display(mark)
-      rows[#rows + 1] = { text = text, highlights = highlights }
+      rows[#rows + 1] = { text = text, highlights = highlights, item = mark }
     end
   end
   if #rows == 0 then
@@ -380,32 +392,13 @@ local function scoreboard_dimensions(row_count)
   }
 end
 
-local function trim_scoreboard_rows(rows, height)
-  if #rows <= height then
-    return rows
-  end
-  if height == 1 then
-    return { { text = ("... %d more rows"):format(#rows), highlights = {} } }
-  end
-
-  local visible = {}
-  for index = 1, height - 1 do
-    visible[index] = rows[index]
-  end
-  local text = ("    ... %d more rows"):format(#rows - height + 1)
-  visible[height] = {
-    text = text,
-    highlights = { { { 0, #text }, "TelescopeResultsComment" } },
-  }
-  return visible
-end
-
-local function apply_scoreboard_highlights(bufnr, rows)
+local function apply_scoreboard_highlights(bufnr, rows, selected_index)
   scoreboard_highlight_ns = scoreboard_highlight_ns
     or vim.api.nvim_create_namespace("dotfiles_buffer_scoreboard_highlight")
+  vim.api.nvim_buf_clear_namespace(bufnr, scoreboard_highlight_ns, 0, -1)
   for row_index, row in ipairs(rows) do
     local zero_row = row_index - 1
-    if row.current then
+    if row_index == selected_index then
       vim.api.nvim_buf_set_extmark(bufnr, scoreboard_highlight_ns, zero_row, 0, {
         end_col = #row.text,
         hl_eol = true,
@@ -425,6 +418,78 @@ local function apply_scoreboard_highlights(bufnr, rows)
 end
 
 local close_scoreboard
+local move_scoreboard_selection
+local confirm_scoreboard_selection
+
+local SCOREBOARD_LOCAL_KEYS = { "j", "k", "<Down>", "<Up>", "<CR>", "<Esc>", "q" }
+
+local function restore_buffer_mapping(bufnr, lhs, mapping)
+  pcall(vim.api.nvim_buf_del_keymap, bufnr, "n", lhs)
+  if not mapping then
+    return
+  end
+
+  local opts = {
+    buffer = bufnr,
+    silent = mapping.silent == 1,
+    expr = mapping.expr == 1,
+    nowait = mapping.nowait == 1,
+    remap = mapping.noremap == 0,
+    script = mapping.script == 1,
+  }
+  if mapping.desc and mapping.desc ~= "" then
+    opts.desc = mapping.desc
+  end
+  if mapping.expr == 1 then
+    opts.replace_keycodes = mapping.replace_keycodes == 1
+  end
+  pcall(vim.keymap.set, "n", lhs, mapping.callback or mapping.rhs or "", opts)
+end
+
+local function restore_scoreboard_keymaps(state)
+  local bufnr = state and state.source_buf
+  if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) or not state.saved_keymaps then
+    return
+  end
+  for _, lhs in ipairs(SCOREBOARD_LOCAL_KEYS) do
+    restore_buffer_mapping(bufnr, lhs, state.saved_keymaps[lhs])
+  end
+  state.saved_keymaps = nil
+end
+
+local function install_scoreboard_keymaps(state)
+  local existing = {}
+  for _, mapping in ipairs(vim.api.nvim_buf_get_keymap(state.source_buf, "n")) do
+    existing[mapping.lhs] = mapping
+  end
+  state.saved_keymaps = {}
+  for _, lhs in ipairs(SCOREBOARD_LOCAL_KEYS) do
+    state.saved_keymaps[lhs] = existing[lhs] or false
+  end
+
+  local opts = { buffer = state.source_buf, nowait = true, silent = true }
+  vim.keymap.set("n", "j", function()
+    move_scoreboard_selection(1, vim.v.count1)
+  end, vim.tbl_extend("force", opts, { desc = "Scoreboard next item" }))
+  vim.keymap.set("n", "k", function()
+    move_scoreboard_selection(-1, vim.v.count1)
+  end, vim.tbl_extend("force", opts, { desc = "Scoreboard previous item" }))
+  vim.keymap.set("n", "<Down>", function()
+    move_scoreboard_selection(1, vim.v.count1)
+  end, vim.tbl_extend("force", opts, { desc = "Scoreboard next item" }))
+  vim.keymap.set("n", "<Up>", function()
+    move_scoreboard_selection(-1, vim.v.count1)
+  end, vim.tbl_extend("force", opts, { desc = "Scoreboard previous item" }))
+  vim.keymap.set("n", "<CR>", function()
+    confirm_scoreboard_selection()
+  end, vim.tbl_extend("force", opts, { desc = "Open scoreboard item" }))
+  vim.keymap.set("n", "<Esc>", function()
+    close_scoreboard()
+  end, vim.tbl_extend("force", opts, { desc = "Close scoreboard" }))
+  vim.keymap.set("n", "q", function()
+    close_scoreboard()
+  end, vim.tbl_extend("force", opts, { desc = "Close scoreboard" }))
+end
 
 local function stop_scoreboard_timer(state)
   local timer = state and state.timer
@@ -445,6 +510,7 @@ close_scoreboard = function()
   end
   scoreboard_state = nil
   stop_scoreboard_timer(state)
+  restore_scoreboard_keymaps(state)
   if scoreboard_key_ns then
     pcall(vim.on_key, nil, scoreboard_key_ns)
   end
@@ -456,6 +522,7 @@ close_scoreboard = function()
   elseif state.buf and vim.api.nvim_buf_is_valid(state.buf) then
     pcall(vim.api.nvim_buf_delete, state.buf, { force = true })
   end
+  close_temporary_windows(state)
 end
 
 local function arm_scoreboard_timer(state, timeout_ms)
@@ -476,7 +543,20 @@ end
 local function watch_scoreboard_input(state)
   scoreboard_key_ns = scoreboard_key_ns or vim.api.nvim_create_namespace("dotfiles_buffer_scoreboard_key")
   vim.on_key(function(_, typed)
-    if scoreboard_state ~= state or typed == "" or vim.fn.keytrans(typed) == "<Tab>" then
+    local key = vim.fn.keytrans(typed)
+    if
+      scoreboard_state ~= state
+      or typed == ""
+      or key == "<Tab>"
+      or key == "j"
+      or key == "k"
+      or key == "<Down>"
+      or key == "<Up>"
+      or key == "<CR>"
+      or key == "<Esc>"
+      or key == "q"
+      or key:match("^%d$")
+    then
       return
     end
     vim.schedule(function()
@@ -487,17 +567,118 @@ local function watch_scoreboard_input(state)
   end, scoreboard_key_ns)
 end
 
+move_scoreboard_selection = function(direction, count)
+  local state = scoreboard_state
+  if not state or not state.selectable_rows or #state.selectable_rows == 0 then
+    return
+  end
+  local next_position = state.selection_position + direction * math.max(1, count or 1)
+  next_position = math.max(1, math.min(next_position, #state.selectable_rows))
+  state.selection_position = next_position
+  state.selected_index = state.selectable_rows[next_position]
+  apply_scoreboard_highlights(state.buf, state.rows, state.selected_index)
+  pcall(vim.api.nvim_win_set_cursor, state.win, { state.selected_index, 0 })
+  arm_scoreboard_timer(state, SCOREBOARD_NAVIGATION_TIMEOUT_MS)
+end
+
+confirm_scoreboard_selection = function()
+  local state = scoreboard_state
+  local row = state and state.rows and state.rows[state.selected_index]
+  local selection = row and row.item
+  local bufnr = selection and selection.bufnr
+  if not state or protected_buffer(bufnr) then
+    notify("没有可打开的 buffer", vim.log.levels.WARN)
+    close_scoreboard()
+    return
+  end
+
+  local mark_position
+  if selection.kind == "mark" then
+    mark_position = current_mark_position(bufnr, selection.mark)
+    if not mark_position then
+      notify(("mark %s 已不存在"):format(selection.mark), vim.log.levels.WARN)
+      close_scoreboard()
+      return
+    end
+  end
+
+  local target = ensure_target_window(state)
+  if not target or not valid_editor_window(target) then
+    notify("找不到安全的目标窗口", vim.log.levels.ERROR)
+    close_scoreboard()
+    return
+  end
+  if protected_buffer(bufnr) then
+    notify("目标 buffer 已失效", vim.log.levels.WARN)
+    close_scoreboard()
+    return
+  end
+
+  local ok, err = pcall(vim.api.nvim_win_set_buf, target, bufnr)
+  if not ok or not valid_editor_window(target) then
+    notify("无法在安全目标窗口打开 buffer: " .. tostring(err), vim.log.levels.ERROR)
+    close_scoreboard()
+    return
+  end
+  state.temporary_windows[target] = nil
+  close_scoreboard()
+  if not vim.api.nvim_win_is_valid(target) then
+    return
+  end
+  vim.api.nvim_set_current_win(target)
+
+  if mark_position then
+    local cursor_ok, cursor_err = pcall(vim.api.nvim_win_set_cursor, target, mark_position)
+    if not cursor_ok then
+      notify("无法跳转到 mark: " .. tostring(cursor_err), vim.log.levels.ERROR)
+    else
+      pcall(vim.api.nvim_win_call, target, function()
+        vim.cmd("normal! zv")
+      end)
+    end
+  end
+  if vim.bo[bufnr].buftype == "terminal" then
+    vim.schedule(function()
+      if
+        vim.api.nvim_win_is_valid(target)
+        and vim.api.nvim_get_current_win() == target
+        and vim.api.nvim_win_get_buf(target) == bufnr
+      then
+        vim.cmd("startinsert")
+      end
+    end)
+  end
+end
+
 local function open_scoreboard()
   local source_win = vim.api.nvim_get_current_win()
   if vim.api.nvim_win_get_config(source_win).relative ~= "" then
     return nil
   end
-  local rows, buffer_count, mark_count = scoreboard_rows(source_win)
+  local state = {
+    source_win = source_win,
+    source_buf = vim.api.nvim_win_get_buf(source_win),
+    tab = vim.api.nvim_get_current_tabpage(),
+    target_win = valid_editor_window(source_win) and source_win or nil,
+    temporary_windows = {},
+  }
+  local rows, buffer_count, mark_count = scoreboard_rows(state)
   local dimensions = scoreboard_dimensions(#rows)
   if not dimensions then
     return nil
   end
-  rows = trim_scoreboard_rows(rows, dimensions.height)
+
+  local selectable_rows = {}
+  local selection_position = 1
+  for index, row in ipairs(rows) do
+    if row.item then
+      selectable_rows[#selectable_rows + 1] = index
+      if row.current then
+        selection_position = #selectable_rows
+      end
+    end
+  end
+  local selected_index = selectable_rows[selection_position]
 
   local bufnr = vim.api.nvim_create_buf(false, true)
   vim.bo[bufnr].bufhidden = "wipe"
@@ -513,7 +694,7 @@ local function open_scoreboard()
       return row.text
     end, rows)
   )
-  apply_scoreboard_highlights(bufnr, rows)
+  apply_scoreboard_highlights(bufnr, rows, selected_index)
   vim.bo[bufnr].modifiable = false
   vim.bo[bufnr].readonly = true
   vim.bo[bufnr].filetype = "dotfiles-buffer-scoreboard"
@@ -521,7 +702,7 @@ local function open_scoreboard()
   local ok, winid = pcall(vim.api.nvim_open_win, bufnr, false, {
     relative = "editor",
     width = dimensions.width,
-    height = #rows,
+    height = dimensions.height,
     row = dimensions.row,
     col = dimensions.col,
     style = "minimal",
@@ -545,16 +726,17 @@ local function open_scoreboard()
     "FloatTitle:TelescopeTitle",
   }, ",")
 
-  local state = {
-    source_win = source_win,
-    buf = bufnr,
-    win = winid,
-    buffer_count = buffer_count,
-    mark_count = mark_count,
-    pulse_count = 1,
-    timer = vim.uv.new_timer(),
-    timer_generation = 0,
-  }
+  state.buf = bufnr
+  state.win = winid
+  state.rows = rows
+  state.selectable_rows = selectable_rows
+  state.selection_position = selection_position
+  state.selected_index = selected_index
+  state.buffer_count = buffer_count
+  state.mark_count = mark_count
+  state.pulse_count = 1
+  state.timer = vim.uv.new_timer()
+  state.timer_generation = 0
   if not state.timer then
     pcall(vim.api.nvim_win_close, winid, true)
     return nil
@@ -573,7 +755,7 @@ local function open_scoreboard()
   })
   vim.api.nvim_create_autocmd("WinClosed", {
     group = state.augroup,
-    pattern = tostring(source_win),
+    pattern = { tostring(source_win), tostring(winid) },
     once = true,
     callback = function()
       if scoreboard_state == state then
@@ -583,7 +765,11 @@ local function open_scoreboard()
   })
 
   scoreboard_state = state
+  install_scoreboard_keymaps(state)
   watch_scoreboard_input(state)
+  if selected_index then
+    pcall(vim.api.nvim_win_set_cursor, winid, { selected_index, 0 })
+  end
   arm_scoreboard_timer(state, SCOREBOARD_INITIAL_TIMEOUT_MS)
   return state
 end
@@ -948,17 +1134,6 @@ local function reopen_picker(state, preferred_bufnr, preferred_mark)
   end
   vim.api.nvim_set_current_win(target)
   open_picker(state)
-end
-
-local function current_mark_position(bufnr, mark)
-  if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) or type(mark) ~= "string" or not mark:match("^[a-z]$") then
-    return nil
-  end
-  local ok, position = pcall(vim.api.nvim_buf_get_mark, bufnr, mark)
-  if not ok or type(position) ~= "table" or not position[1] or position[1] <= 0 then
-    return nil
-  end
-  return position
 end
 
 local function save_unnamed_then_delete(state, bufnr)
