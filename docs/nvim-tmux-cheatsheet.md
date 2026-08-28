@@ -76,6 +76,30 @@
 
 ---
 
+## 背景面板
+
+`Space bg` 打开相对整个 Nvim 居中的背景调节面板。它保留 TokyoNight 的前景色和语法色，只调整普通编辑画布；所有普通 split 透出同一张终端背景，普通 terminal、Codex 和 Grok buffer 继续使用主题的不透明背景。
+
+| 面板按键 | 操作 |
+|----------|------|
+| `j` / `k` | 选择模式、图片、布局或某个滑块 |
+| `h` / `l` | 小步减小 / 增大当前值；Mode 和 Image layout 循环切换 |
+| `H` / `L` | 大步减小 / 增大当前值 |
+| `i` | 精确输入当前数值 |
+| `o` / Image 行 `Enter` | 用 Yazi 选择图片；没有 Yazi 时输入路径 |
+| `c` | 清除当前图片 |
+| `r` / `R` | 重置当前项 / 重置全部设置 |
+| `s` / 非 Image 行 `Enter` | 保存并关闭 |
+| `q` / `Esc` | 取消并恢复打开面板前的效果 |
+
+Mode 含义：`Theme` 使用 TokyoNight 原背景，`Tint` 用 Hue / Saturation / Lightness 调整主题背景，`Image` 让普通画布透明并启用 renderer 图片，`Transparent` 让普通画布透明并使用 renderer 的透明度 / 模糊。设置保存在 `stdpath("state")/dotfiles-background.json`，无需手改配置文件。
+
+面板底部的 Renderer 行会显示能力探测结果：无专属适配器时是 `Nvim colors only`，颜色和透明 canvas 仍可用；本机 iTerm2 位于前台且 helper 在线时显示 `iTerm2 · local bridge`，支持图片、透明度和模糊。从 Mac 的交互式 shell 执行普通 `ssh` 时会通过 `ssh -G` 检查有效配置，只在缺失时自动反向转发 `127.0.0.1:47790`；远端 Nvim 随后显示 `iTerm2 · SSH bridge`，远端 Yazi 图片会按内容哈希上传到 Mac 缓存。显式传入任意 `ssh -R` 时保持原行为、不自动注入 bridge；设置 `DARWIN_NO_REMOTE_BACKGROUND=1` 可单独关闭自动背景转发。
+
+iTerm2 renderer 只在 Nvim 至少有一个 UI attach 时临时占用当前 session profile。`Space d`、`:detach` 或 `:qa` 使最后一个 UI 离开后，会恢复进入 Nvim 前的 iTerm2 背景；之后重新 attach 时再按已保存的 Nvim 设置应用。面板的保存只持久化 Nvim 设置，不会把临时背景写成退出后的 iTerm2 状态。
+
+---
+
 ## Live Session（像 tmux detach / attach）
 
 Neovim 0.12 可以把当前 TUI 脱离，但让原来的 Nvim 进程继续在后台运行；窗口布局、buffer、未保存修改以及普通 shell / agent terminal 都会原样保留。交互式 shell 里的普通 `nvim` / `nvim .` / `vim` 会由独立的隐藏 tmux server 托管，因此即使承载 TUI 的 terminal 窗口被意外关闭，Nvim 进程和视图也仍会存活。若提示版本过低，先运行 `type -a nvim` 和 `nvim --version`；本配置会把 Homebrew 的 `bin` 放到系统目录前，重新加载 `~/.shared_rc` 或新开 shell 后应命中 0.12+。

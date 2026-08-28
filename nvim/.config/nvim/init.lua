@@ -3747,3 +3747,5 @@ require("lazy").setup({
       opts = {},
   }
 })
+
+require("dotfiles.background").setup()

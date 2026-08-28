@@ -23,6 +23,7 @@ codex-skills/        <- Codex 专用 skill（如 nvim-quickref），setup.sh 把
 karabiner/           <- (macOS) Karabiner-Elements 键盘映射（Caps Lock 层、双 Shift 切输入法、外设键盘左 Cmd⇄左 Option；内置键盘保持原生）；setup.sh 把整个目录链到 ~/.config/karabiner（必须目录级链接，GUI 保存会替换单文件 symlink）；automatic_backups/ 已 gitignore
 raycast/             <- (macOS) Raycast extension hotkeys / aliases / preferences 的官方 .rayconfig 手动迁移说明；不 symlink Raycast 数据库
 iterm2-imgpaste/     <- (macOS) iTerm2 快捷键把 Mac 剪贴板图片 push 到远端 SSH 会话、以 bracketed paste 注入 agent 输入框；setup.sh 调 install.sh 把 daemon 链到 iTerm2 AutoLaunch
+nvim-background/     <- (macOS, optional) Nvim 通用背景面板的 iTerm2 renderer；本机走 Unix socket，SSH 走 loopback 反向 bridge，图片、透明度、模糊只写当前临时 profile
 setup.sh             <- 一键安装/同步脚本，自动检测包管理器 (brew/rpm-ostree/dnf/apt) 和平台，重跑安全
 ```
 

@@ -29,6 +29,7 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 - 底部 drawer 只保留普通 shell：始终跟随当前 tab、全宽贴底，不参与上方窗口布局；`<C-/>` / `<C-_>` 切换，`<M-+>` / `<M-->`（含 `<M-=>`）调整 drawer 高度
 - normal mode 按住 `<Tab>` 会显示与 buffer 管理器同源、全局居中的只读 session buffer / mark scoreboard，不夺取焦点；`j` / `k` 选择、`Enter` 跳转，`Esc` / `q` 或超时取消；首次按下约 650ms 等待系统连发，连发后最后一次 `<Tab>` 约 130ms 自动关闭，每次导航再保留约 650ms 等待确认；`<C-I>` 单独保留原生 jumplist 前进
 - `<leader>m` 在当前普通 listed buffer 的光标处自动添加 `a-z` 中第一个空闲 mark，绝不覆盖，26 个占满时只提示；`<leader>fb` 和精确输入 `:ls<CR>` 打开同一个全局居中的安全 Telescope session buffer 管理器，完整路径中只高亮文件名，mark 以可选子行显示并支持说明 / 精确跳转，预览默认隐藏并在 normal mode 用 `p` 切换；`<leader>t` 完整 terminal、Codex 和 Grok 都可列出、切换，`dd` 确认后可结束进程；底部 shell drawer buffer 永不进入列表或删除范围
+- `<leader>bg` 打开全局居中的原生背景面板；主题色调节和透明 canvas 在所有终端可用，renderer 通过能力握手自动选择。iTerm2 位于前台时启用图片、透明度、模糊，SSH 从 Mac 发起时经 `127.0.0.1:47790` 反向 bridge 使用同一能力；普通编辑 split 共用整张终端背景，terminal / agent buffer 保持主题不透明底色
 - Neovim 0.12 live session：交互式 shell 的 `nvim` / `nvim .` / `vim` 由独立的 `dotfiles-nvim-host` tmux server 托管，host 需通过 RPC 探活才会接入 UI；nvim 端在环境变量缺失时会补与 `.shared_rc` 相同的默认 session 目录 / tmux server，新建失败会清理本次刚拉起的空 host；terminal 意外关闭后进程仍存活；`<leader>d` 主动脱离；`<leader>fs` 打开原生 Session Dashboard，聚焦 session 时自动展开 tag，`<leader>fS` 直接进入当前 session 的 Tag 模式；Dashboard 支持连接、新建、重命名、Session / Tag 回收站、Codex 状态动画和人工进度日志；live Session Trash 保留 24 小时且到期时跳过 attached UI / working Codex，Tag Trash 保留 30 天；已结束 Session 的 Tag 以 `ENDED` / `Past Session Notes` 保留且可手动整组删除；日志约 400ms debounce 自动保存；跨 session RPC 总超时 700ms；普通 `tmux ls` 不显示隐藏 host
 - netrw 禁用（`vim.g.loaded_netrw = 1`），文件浏览全走 oil
 
@@ -46,6 +47,7 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 | n | `<Tab>`（按住） | 打开不夺取焦点的只读 session buffer / mark 导航层；`j` / `k` 选择，`Enter` 跳转，松开或 `Esc` / `q` 取消 |
 | n | `<C-I>` / `<C-O>` | 原生 jumplist 前进 / 后退；`<C-I>` 与 scoreboard 的 `<Tab>` 分开映射 |
 | n | `<leader>m` | 在当前普通 listed buffer 的光标处添加第一个空闲的 `a-z` mark；不覆盖，26 个占满时只提示 |
+| n | `<leader>bg` | 打开背景调节面板；自动显示当前 terminal renderer 能力 |
 | n | `<leader>yp` | 复制当前 buffer 绝对路径到 `+` 和 `"` |
 | n | `<leader>t` | 在当前上下文目录开完整 terminal buffer 并直接进入输入；若当前 buffer 是 terminal，则沿用该 shell cwd |
 | n/t（terminal） | `Caps+N`（Karabiner → `<C-S-Del>`） | 退出 terminal input 并跳回同 tab 最近的普通编辑窗口；完整 agent 没有其他编辑窗口时恢复它替换前的 buffer |
@@ -101,6 +103,14 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 - 作为 `nvim-lspconfig` 依赖加载
 - 在 `LspAttach` 时对支持 `documentSymbolProvider` 的 LSP 自动 attach
 - `winbar` 动态显示当前位置；无 LSP symbol 时回退显示当前文件名
+
+### 原生背景面板
+
+`<leader>bg` 打开相对整个 Nvim 居中的浮窗。`j` / `k` 选择 Mode、Image、Image layout、Hue、Saturation、Lightness、Image blend、Transparency、Blur；`h` / `l` 小步调整，`H` / `L` 大步调整，`i` 输入精确数值。`o` 或 Image 行 `Enter` 用 Yazi 选图，`c` 清图，`r` 重置当前项，`R` 全部重置，`s` 保存，`q` / `Esc` 取消并恢复打开前的 Nvim 高亮和终端临时 profile；其他行 `Enter` 也会保存。
+
+通用核心始终可用：Theme 保留 TokyoNight，Tint 调整主题背景的 HSL，Image / Transparent 让普通编辑 canvas 透出终端底层。renderer 行通过主动握手显示能力；没有适配器时为 `Nvim colors only`。本机 iTerm2 helper 在线且 iTerm2 位于前台时显示 `iTerm2 · local bridge`，经 Mac 的 `ssh()` 自动反向转发后显示 `iTerm2 · SSH bridge`，并支持真实图片、透明度和模糊。远端 Yazi 选中的图片按哈希上传到 Mac 缓存，TCP bridge 不接受任意 Mac 路径。普通编辑 split 只是同一终端画布上的透明区域，因此看到一张整体背景；`buftype=terminal` 的普通 terminal、Codex、Grok 使用主题原背景遮住图片。
+
+iTerm2 的临时 profile 只在 Nvim 至少有一个 UI attach 时生效。`<leader>d` / `:detach` 或 `:qa` 让最后一个 UI 离开后恢复进入 Nvim 前的终端背景；重新 attach 时再应用已保存的 Nvim 背景。面板保存不会改变退出 Nvim 后的 iTerm2 背景。
 
 ### 原生 Live Session Dashboard
 

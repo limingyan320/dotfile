@@ -156,6 +156,7 @@ if [[ $- == *i* ]]; then
     alias ...='cd ../..'
     alias claude='claude --dangerously-skip-permissions'
     alias codex='codex --yolo'
+    alias grok='grok --yolo'
     alias g='nvitop'
     alias v5='ssh -N -D 192.168.100.160:1080 administrator@192.168.100.127'
 
@@ -358,6 +359,7 @@ fi
 
 export PATH
 export CODEX_NOTIFY_LISTEN_PORT="${CODEX_NOTIFY_LISTEN_PORT:-47789}"
+export DOTFILES_NVIM_BACKGROUND_PORT="${DOTFILES_NVIM_BACKGROUND_PORT:-47790}"
 
 # --- Codex 通知配置自愈 ---
 __dotfiles_has_real_command() {
@@ -575,21 +577,53 @@ if [[ $- == *i* ]] && [ -z "${__DOTFILES_TMUX_HOOKS:-}" ] && typeset -f __dotfil
 fi
 
 if [[ $- == *i* ]] && [ "$(uname -s 2>/dev/null)" = "Darwin" ] && [ -z "${SSH_CONNECTION:-}" ]; then
-    __dotfiles_codex_ssh_should_forward_notify() {
-        [ -n "${DARWIN_NO_REMOTE_NOTIFY:-}" ] && return 1
+    __dotfiles_ssh_should_forward_local_services() {
         command -v ssh >/dev/null 2>&1 || return 1
         return 0
     }
 
+    __dotfiles_ssh_config_has_remote_port() {
+        local expected_port="$1"
+        local config="$2"
+        local line remote
+        while IFS= read -r line; do
+            case "$line" in
+                "remoteforward "*)
+                    remote="${line#remoteforward }"
+                    remote="${remote%% *}"
+                    remote="${remote##*:}"
+                    [ "$remote" = "$expected_port" ] && return 0
+                    ;;
+            esac
+        done <<EOF
+$config
+EOF
+        return 1
+    }
+
     ssh() {
-        if __dotfiles_codex_ssh_should_forward_notify; then
-            local forward_spec="127.0.0.1:${CODEX_NOTIFY_LISTEN_PORT}:127.0.0.1:${CODEX_NOTIFY_LISTEN_PORT}"
+        if __dotfiles_ssh_should_forward_local_services; then
+            local notify_forward="127.0.0.1:${CODEX_NOTIFY_LISTEN_PORT}:127.0.0.1:${CODEX_NOTIFY_LISTEN_PORT}"
+            local background_forward="127.0.0.1:${DOTFILES_NVIM_BACKGROUND_PORT}:127.0.0.1:${DOTFILES_NVIM_BACKGROUND_PORT}"
+            local -a forwards
+            forwards=()
             local arg
             for arg in "$@"; do
-                [ "$arg" = "$forward_spec" ] && command ssh "$@" && return $?
-                [ "$arg" = "-R" ] && command ssh "$@" && return $?
+                [ "$arg" = "$notify_forward" ] && command ssh "$@" && return $?
+                [ "$arg" = "$background_forward" ] && command ssh "$@" && return $?
+                case "$arg" in
+                    -R|-R*) command ssh "$@"; return $? ;;
+                esac
             done
-            command ssh -R "$forward_spec" "$@"
+            local effective_config
+            effective_config="$(command ssh -G "$@" 2>/dev/null)" || effective_config=""
+            if [ -z "${DARWIN_NO_REMOTE_NOTIFY:-}" ] && ! __dotfiles_ssh_config_has_remote_port "$CODEX_NOTIFY_LISTEN_PORT" "$effective_config"; then
+                forwards+=( -R "$notify_forward" )
+            fi
+            if [ -z "${DARWIN_NO_REMOTE_BACKGROUND:-}" ] && ! __dotfiles_ssh_config_has_remote_port "$DOTFILES_NVIM_BACKGROUND_PORT" "$effective_config"; then
+                forwards+=( -R "$background_forward" )
+            fi
+            command ssh "${forwards[@]}" "$@"
         else
             command ssh "$@"
         fi

@@ -45,11 +45,12 @@ GET  /health    查看 active / acknowledged 数量
 
 ## SSH 远端
 
-远端 Nvim 只显示远端自己的 session；Mac 只是 popup 接收端。SSH alias 需要把远端 loopback `47789` 反向转发到 Mac listener：
+远端 Nvim 只显示远端自己的 session；Mac 只是 popup 接收端。从 Mac 交互式 shell 直接执行普通 `ssh` 时，`.shared_rc` 的 wrapper 会读取 `ssh -G` 的有效配置，只补上尚未配置的远端 loopback `47789`，并同时补齐 Nvim 背景 renderer 使用的 `47790`。使用 `command ssh`、其他程序直接启动 ssh，或显式传入任意 `-R` 时不会自动注入；这些入口可在 SSH alias 中手动配置：
 
 ```sshconfig
 Host gpu1
   RemoteForward 47789 127.0.0.1:47789
+  RemoteForward 47790 127.0.0.1:47790
 ```
 
 完成和 check 都走同一条 tunnel：远端 `/notify` 到 Mac；你在远端 Nvim 中真正看到对应 Codex 最新输出后，远端再向 Mac `/dismiss`。不同远端主机可以各自使用 `47789`；同一主机的多个独立 SSH 连接会争抢同一个远端端口，长期使用时应让该 alias 使用一条 multiplexed master connection，或确保承载反向转发的连接持续存在。

@@ -125,7 +125,7 @@ echo ""
 
 case "$PKG_MANAGER" in
     brew)
-        for pkg in neovim tmux git fastfetch ripgrep; do
+        for pkg in neovim tmux git fastfetch ripgrep yazi chafa; do
             if brew list "$pkg" &>/dev/null; then
                 warn "$pkg 已安装，跳过"
             else
@@ -136,7 +136,7 @@ case "$PKG_MANAGER" in
         ;;
     rpm-ostree)
         NEED_INSTALL=()
-        for pkg in neovim tmux git wl-clipboard bash-completion fastfetch ripgrep; do
+        for pkg in neovim tmux git wl-clipboard bash-completion fastfetch ripgrep yazi chafa; do
             if rpm -q "$pkg" &>/dev/null; then
                 warn "$pkg 已安装，跳过"
             else
@@ -152,7 +152,7 @@ case "$PKG_MANAGER" in
         fi
         ;;
     dnf)
-        for pkg in neovim tmux git wl-clipboard bash-completion fastfetch ripgrep; do
+        for pkg in neovim tmux git wl-clipboard bash-completion fastfetch ripgrep yazi chafa; do
             if rpm -q "$pkg" &>/dev/null; then
                 warn "$pkg 已安装，跳过"
             else
@@ -165,7 +165,7 @@ case "$PKG_MANAGER" in
         info "正在更新软件包列表..."
         sudo apt update || warn "apt update 失败（可能是网络/代理问题），继续尝试安装已缓存的包"
         # neovim 单独处理：live session 需要 0.12，老发行版 apt 仓库版本不足
-        for pkg in tmux git xclip bash-completion ripgrep python3-tomli; do
+        for pkg in tmux git xclip bash-completion ripgrep python3-tomli yazi chafa; do
             if dpkg -s "$pkg" &>/dev/null; then
                 warn "$pkg 已安装，跳过"
             else
@@ -495,8 +495,10 @@ echo ""
 
 if [ "$PLATFORM" = "macos" ]; then
     bash "$DOTFILES/iterm2-imgpaste/install.sh" || warn "iclip install.sh 有异常退出码，但已尽力处理"
+    bash "$DOTFILES/nvim-background/install.sh" || warn "Nvim background helper 安装有异常退出码，但已尽力处理"
 else
     warn "iclip 的 Mac 侧 daemon 只装在 macOS；Linux 仅作被推送端（push 时自动建 ~/.cache/iclip），无需配置"
+    warn "iTerm2 renderer 只在 macOS 安装；Nvim 背景面板和颜色调节仍可使用"
 fi
 
 echo ""
