@@ -160,25 +160,27 @@ local function set_highlight(name, base, background)
   vim.api.nvim_set_hl(0, name, value)
 end
 
-local function merge_winhighlight(value, replacements)
-  local entries = {}
-  local order = {}
+local function remove_winhighlights(value, removals)
+  local result = {}
   for entry in tostring(value or ""):gmatch("[^,]+") do
-    local source, target = entry:match("^([^:]+):(.+)$")
-    if source and target and replacements[source] == nil then
-      entries[source] = target
-      order[#order + 1] = source
+    local source, target = entry:match("^([^:]+):(.*)$")
+    if source and target and removals[source] == nil then
+      result[#result + 1] = source .. ":" .. target
     end
+  end
+  return table.concat(result, ",")
+end
+
+local function merge_winhighlight(value, replacements)
+  local result = {}
+  local base = remove_winhighlights(value, replacements)
+  if base ~= "" then
+    result[#result + 1] = base
   end
   for _, source in ipairs(CANVAS_GROUPS) do
     if replacements[source] then
-      entries[source] = replacements[source]
-      order[#order + 1] = source
+      result[#result + 1] = source .. ":" .. replacements[source]
     end
-  end
-  local result = {}
-  for _, source in ipairs(order) do
-    result[#result + 1] = source .. ":" .. entries[source]
   end
   return table.concat(result, ",")
 end
@@ -189,15 +191,18 @@ local function apply_window_background(winid)
   end
   local bufnr = vim.api.nvim_win_get_buf(winid)
   local terminal = vim.api.nvim_buf_is_valid(bufnr) and vim.bo[bufnr].buftype == "terminal"
+  -- Buffer views retain window-local options, so keep our mappings as an idempotent overlay.
+  local current = vim.wo[winid].winhighlight
+  local updated
   if terminal then
-    if vim.w[winid].dotfiles_background_winhighlight == nil then
-      vim.w[winid].dotfiles_background_winhighlight = vim.wo[winid].winhighlight
-    end
-    vim.wo[winid].winhighlight = merge_winhighlight(vim.w[winid].dotfiles_background_winhighlight, TERMINAL_GROUPS)
-  elseif vim.w[winid].dotfiles_background_winhighlight ~= nil then
-    vim.wo[winid].winhighlight = vim.w[winid].dotfiles_background_winhighlight
-    vim.w[winid].dotfiles_background_winhighlight = nil
+    updated = merge_winhighlight(current, TERMINAL_GROUPS)
+  else
+    updated = remove_winhighlights(current, TERMINAL_GROUPS)
   end
+  if updated ~= current then
+    vim.wo[winid].winhighlight = updated
+  end
+  vim.w[winid].dotfiles_background_winhighlight = nil
 end
 
 local function apply_all_windows()
