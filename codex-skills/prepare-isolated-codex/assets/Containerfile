@@ -1,0 +1,22 @@
+# syntax=docker/dockerfile:1
+ARG CODEX_BOOTSTRAP_IMAGE=node:22-bookworm-slim
+ARG BASE_IMAGE=scratch
+
+FROM ${CODEX_BOOTSTRAP_IMAGE} AS codex_bootstrap
+ARG CODEX_VERSION
+RUN npm install --global --omit=dev "@openai/codex@${CODEX_VERSION}" \
+    && codex_path="$(find /usr/local/lib/node_modules/@openai/codex -type f -path '*/vendor/*/bin/codex' -print -quit)" \
+    && test -n "$codex_path" \
+    && mkdir /codex-bin \
+    && cp "$codex_path" /codex-bin/codex \
+    && companion="$(dirname "$codex_path")/codex-code-mode-host" \
+    && if [ -f "$companion" ]; then cp "$companion" /codex-bin/codex-code-mode-host; fi \
+    && chmod 0755 /codex-bin/*
+
+FROM ${BASE_IMAGE}
+COPY --from=codex_bootstrap /codex-bin/ /usr/local/bin/
+COPY --chmod=0755 assets/contact-owner /usr/local/bin/contact-owner
+COPY --chmod=0755 assets/verify-boundary /usr/local/bin/verify-boundary
+# hadolint ignore=DL3002
+USER 0:0
+WORKDIR /workspace

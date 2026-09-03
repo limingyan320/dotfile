@@ -1,0 +1,78 @@
+#!/bin/sh
+set -eu
+
+workspace_mode="${1:-rw}"
+shift || true
+network_mode="${1:-none}"
+shift || true
+ca_bundle="${1:-}"
+shift || true
+
+test -x /usr/local/bin/codex
+test -x /usr/local/bin/contact-owner
+if [ "${ISOLATED_CODEX_INJECTION:-layer}" = layer ]; then
+  test -x /usr/local/bin/codex-code-mode-host || {
+    printf '%s\n' "Codex injection is incomplete: codex-code-mode-host is missing" >&2
+    exit 1
+  }
+fi
+test ! -e /var/run/docker.sock
+test ! -e /run/docker.sock
+test ! -e /root/.ssh
+test -d /workspace
+test -d /codex-control
+test -d /codex-home
+test -r /codex-home/auth.json
+test -r /codex-home/config.toml
+
+if [ "$network_mode" != none ]; then
+  if [ -n "$ca_bundle" ]; then
+    test -s "$ca_bundle" || {
+      printf 'declared CA bundle is missing or empty: %s\n' "$ca_bundle" >&2
+      exit 1
+    }
+  else
+    ca_found=false
+    for candidate in \
+      /etc/ssl/certs/ca-certificates.crt \
+      /etc/pki/tls/certs/ca-bundle.crt \
+      /etc/ssl/ca-bundle.pem \
+      /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
+    do
+      if [ -s "$candidate" ]; then
+        ca_found=true
+        break
+      fi
+    done
+    if [ "$ca_found" != true ]; then
+      printf '%s\n' "online worker has no recognized CA trust store; set network.ca_bundle or fix the selected task image" >&2
+      exit 1
+    fi
+  fi
+fi
+
+if ( : > /isolated-codex-root-write-probe ) 2>/dev/null; then
+  printf '%s\n' "root filesystem is writable" >&2
+  exit 1
+fi
+
+if [ "$workspace_mode" = rw ]; then
+  probe="/workspace/.isolated-codex-write-probe-$$"
+  : > "$probe"
+  rm "$probe"
+else
+  if ( : > /workspace/.isolated-codex-write-probe ) 2>/dev/null; then
+    printf '%s\n' "read-only workspace is writable" >&2
+    exit 1
+  fi
+fi
+
+for command_name in "$@"; do
+  command -v "$command_name" >/dev/null 2>&1 || {
+    printf 'required command is missing: %s\n' "$command_name" >&2
+    exit 1
+  }
+done
+
+codex --version
+printf '%s\n' "container boundary verification passed"

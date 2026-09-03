@@ -1,0 +1,4 @@
+interface:
+  display_name: "Prepare Isolated Codex"
+  short_description: "构建并验证可移植的 Codex 容器隔离环境"
+  default_prompt: "Use $prepare-isolated-codex to prepare, verify, and launch an isolated Codex environment for this project."

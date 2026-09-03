@@ -1,0 +1,8 @@
+# syntax=docker/dockerfile:1
+ARG BASE_IMAGE=scratch
+FROM ${BASE_IMAGE}
+COPY --chmod=0755 assets/contact-owner /usr/local/bin/contact-owner
+COPY --chmod=0755 assets/verify-boundary /usr/local/bin/verify-boundary
+# hadolint ignore=DL3002
+USER 0:0
+WORKDIR /workspace
