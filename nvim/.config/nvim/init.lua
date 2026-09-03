@@ -567,6 +567,24 @@ local session_environment_names = {
   "LANG",
   "LC_ALL",
   "LC_CTYPE",
+  "TERM",
+  "TERM_PROGRAM",
+  "TERM_PROGRAM_VERSION",
+  "TERM_SESSION_ID",
+  "TERMINFO",
+  "TERMINFO_DIRS",
+  "TERM_FEATURES",
+  "COLORTERM",
+  "KITTY_LISTEN_ON",
+  "KITTY_PID",
+  "KITTY_WINDOW_ID",
+  "KITTY_PUBLIC_KEY",
+  "KITTY_INSTALLATION_DIR",
+  "ITERM_SESSION_ID",
+  "LC_TERMINAL",
+  "LC_TERMINAL_VERSION",
+  "WEZTERM_PANE",
+  "WEZTERM_EXECUTABLE",
   "SSH_AUTH_SOCK",
   "SSH_AGENT_PID",
   "SSH_CONNECTION",
@@ -3624,7 +3642,31 @@ require("lazy").setup({
   {
     "sphamba/smear-cursor.nvim",
     event = "VeryLazy",
-    opts = {},
+    opts = {
+      enabled = true,
+
+      -- 动画更快结束
+      stiffness = 0.8,
+      trailing_stiffness = 0.6,
+      damping = 0.95,
+      distance_stop_animating = 0.5,
+
+      -- 不要拖得太长
+      max_length = 12,
+
+      -- 日常 hjkl 小移动不触发 smear
+      min_horizontal_distance_smear = 2,
+      min_vertical_distance_smear = 2,
+
+      -- 插入模式我建议直接关掉
+      smear_insert_mode = false,
+
+      -- 切窗口 / buffer 时也可以不动画
+      smear_between_buffers = false,
+
+      -- 命令行切换时不动画
+      smear_to_cmd = false,
+    },
   },
   -- LSP 配置
   {

@@ -4,6 +4,7 @@ local active
 
 local ROWS = {
   "mode",
+  "renderer",
   "image_path",
   "image_mode",
   "hue",
@@ -15,6 +16,8 @@ local ROWS = {
 }
 local MODE_ORDER = { "theme", "tint", "image", "transparent" }
 local MODE_LABELS = { theme = "Theme", tint = "Tint", image = "Image", transparent = "Transparent" }
+local RENDERER_ORDER = { "auto", "nvim" }
+local RENDERER_LABELS = { auto = "Auto", nvim = "Off" }
 local IMAGE_MODE_ORDER = { "fill", "fit", "stretch", "tile" }
 local IMAGE_MODE_LABELS = { fill = "Fill", fit = "Fit", stretch = "Stretch", tile = "Tile" }
 local NUMERIC = {
@@ -140,6 +143,12 @@ local function render(state)
   metadata[#lines] = { label = true, selected = selected_mode }
   state.hitboxes[#lines] = { kind = "segments", boxes = mode_boxes }
 
+  local renderer_line, renderer_boxes, selected_renderer =
+    segmented_line("Renderer", RENDERER_ORDER, RENDERER_LABELS, state.settings.renderer)
+  lines[#lines + 1] = renderer_line
+  metadata[#lines] = { label = true, selected = selected_renderer }
+  state.hitboxes[#lines] = { kind = "segments", boxes = renderer_boxes }
+
   local image = state.settings.image_path ~= "" and state.settings.image_path or "None"
   lines[#lines + 1] = ("%-14s %s"):format("Image", truncate_display(image, math.max(8, width - 17)))
   metadata[#lines] = { label = true }
@@ -167,7 +176,7 @@ local function render(state)
   local preview = vim.fn.executable("chafa") == 1 and "Chafa" or "no image preview"
   local renderer_text = renderer.label .. (renderer.detail and (" · " .. renderer.detail) or "")
   renderer_text = renderer_text .. " | " .. chooser .. " + " .. preview
-  lines[#lines + 1] = ("%-14s %s"):format("Renderer", truncate_display(renderer_text, math.max(8, width - 15)))
+  lines[#lines + 1] = ("%-14s %s"):format("Backend", truncate_display(renderer_text, math.max(8, width - 15)))
   metadata[#lines] = { label = true, muted = true }
 
   vim.bo[state.buf].modifiable = true
@@ -255,6 +264,8 @@ local function adjust(state, direction, large)
   local key = selected_key(state)
   if key == "mode" then
     state.settings.mode = cycle(MODE_ORDER, state.settings.mode, direction)
+  elseif key == "renderer" then
+    state.settings.renderer = cycle(RENDERER_ORDER, state.settings.renderer, direction)
   elseif key == "image_mode" then
     state.settings.image_mode = cycle(IMAGE_MODE_ORDER, state.settings.image_mode, direction)
   elseif NUMERIC[key] then

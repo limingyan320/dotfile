@@ -17,6 +17,7 @@ shell/.bashrc        <- Linux/WSL 专用：bash 补全、PS1 提示符
 shell/.bash_profile  <- Linux/WSL 的 login shell 入口，统一转发到 .bashrc，保证 SSH 登录也加载 .shared_rc
 nvim/.config/nvim/   <- Neovim 配置，跨平台通用，使用 lazy.nvim 管理插件
 tmux/.tmux.conf      <- tmux 配置，跨平台通用，剪贴板自动检测 (pbcopy/wl-copy/xclip/clip.exe)
+kitty/kitty.conf     <- Kitty 可选终端配置；为 Nvim 背景 adapter 开启同用户 remote-control socket 和动态透明度
 fastfetch/           <- fastfetch 配置、raw logo 和 preset；setup.sh 链到 ~/.config/fastfetch/
 codex-notifications/ <- Codex notify + lifecycle hooks；记录每个 Nvim session 的 working/ready/seen，macOS listener 按 turn ID 管理可联动关闭的 Swift 弹窗；SSH 远端经反向转发回 Mac；apply.sh 合并 ~/.codex/config.toml / hooks.json
 claude-notifications/<- claude-notifications-go 插件的自定义资源（音效/图标/标题），apply.sh 合并进 ~/.claude/claude-notifications-go/config.json

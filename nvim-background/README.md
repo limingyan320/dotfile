@@ -2,7 +2,28 @@
 
 The Neovim background panel is renderer-independent. Color and transparent
 canvas modes work without this directory; this helper adds iTerm2-specific
-image, opacity, and blur controls.
+image, opacity, and blur controls. Kitty support is implemented directly in
+`nvim/.config/nvim/lua/dotfiles/background_renderers/kitty.lua` and does not
+use this daemon.
+
+The panel's `Renderer` control can persist either `Auto` or `Off`.
+`Off` restores the terminal state captured before Neovim applied its
+background, then bypasses automatic renderer detection on later UI attach and
+focus events. Opening the panel still probes available capabilities so `Auto`
+can be restored without restarting. It is also the native fallback on machines
+where no renderer bridge is available.
+
+In Kitty, `Auto` uses the focused window reported by `kitten @ ls`, applies the
+image with `set-background-image`, and snapshots/restores the OS-window opacity.
+The managed `kitty/kitty.conf` exposes a same-user Unix socket and enables
+dynamic opacity. ImageMagick supplies cached image blend, image blur, alpha and
+Fit preprocessing; Kitty itself owns Fill, Stretch and Tile layout. The adapter
+removes its image and restores the captured opacity on the last UI detach or
+Neovim exit. Kitty is optional and is not installed automatically. Restart
+Kitty after first linking this config because `listen_on` and
+`dynamic_background_opacity` are startup settings rather than hot-reloadable
+options. Blend follows iTerm2's direction: `0` is the terminal background color
+and `100` is the unblended source image.
 
 `iterm_background_daemon.py` listens on:
 

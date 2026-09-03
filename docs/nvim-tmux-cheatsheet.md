@@ -82,8 +82,8 @@
 
 | 面板按键 | 操作 |
 |----------|------|
-| `j` / `k` | 选择模式、图片、布局或某个滑块 |
-| `h` / `l` | 小步减小 / 增大当前值；Mode 和 Image layout 循环切换 |
+| `j` / `k` | 选择模式、renderer、图片、布局或某个滑块 |
+| `h` / `l` | 小步减小 / 增大当前值；Mode、Renderer 和 Image layout 循环切换 |
 | `H` / `L` | 大步减小 / 增大当前值 |
 | `i` | 精确输入当前数值 |
 | `o` / Image 行 `Enter` | 用 Yazi 选择图片；没有 Yazi 时输入路径 |
@@ -94,9 +94,15 @@
 
 Mode 含义：`Theme` 使用 TokyoNight 原背景，`Tint` 用 Hue / Saturation / Lightness 调整主题背景，`Image` 让普通画布透明并启用 renderer 图片，`Transparent` 让普通画布透明并使用 renderer 的透明度 / 模糊。设置保存在 `stdpath("state")/dotfiles-background.json`，无需手改配置文件。
 
-面板底部的 Renderer 行会显示能力探测结果：无专属适配器时是 `Nvim colors only`，颜色和透明 canvas 仍可用；本机 iTerm2 位于前台且 helper 在线时显示 `iTerm2 · local bridge`，支持图片、透明度和模糊。从 Mac 的交互式 shell 执行普通 `ssh` 时会通过 `ssh -G` 检查有效配置，只在缺失时自动反向转发 `127.0.0.1:47790`；远端 Nvim 随后显示 `iTerm2 · SSH bridge`，远端 Yazi 图片会按内容哈希上传到 Mac 缓存。显式传入任意 `ssh -R` 时保持原行为、不自动注入 bridge；设置 `DARWIN_NO_REMOTE_BACKGROUND=1` 可单独关闭自动背景转发。
+Renderer 含义：`Auto` 自动探测当前 terminal 能力，优先使用 Kitty，再回退到 iTerm2 helper；`Off` 立即恢复进入 Nvim 前捕获的 terminal 状态，并跳过日常 UI attach / FocusGained 的 renderer 探测和应用。该选择同样会保存；重新打开面板仍会握手，以便切回 `Auto` 后重新应用原有 Mode 和图片参数，但旁路状态下不会自行启用图片。
 
-iTerm2 renderer 只在 Nvim 至少有一个 UI attach 时临时占用当前 session profile。`Space d`、`:detach` 或 `:qa` 使最后一个 UI 离开后，会恢复进入 Nvim 前的 iTerm2 背景；之后重新 attach 时再按已保存的 Nvim 设置应用。面板的保存只持久化 Nvim 设置，不会把临时背景写成退出后的 iTerm2 状态。
+面板底部的 Backend 行会显示实际能力：无专属适配器时是 `Nvim colors only`，选择 `Off` 时是 `Renderer off · Nvim colors only`，颜色和透明 canvas 仍可用。Kitty 中显示 `Kitty · local socket`：Fill / Stretch / Tile 由 Kitty 渲染，Fit、图片 blend / blur / alpha 由 ImageMagick 缓存预处理；Blend `0` 只显示主题底色，`100` 显示完整原图，数值越大图片越清晰。没有 ImageMagick 时仍可显示原图和调整动态 opacity。纯 `Transparent` 模式不支持运行时调整 Kitty 的桌面背景 blur。背景图片属于当前聚焦的 Kitty OS window，因此同一 OS window 的其他 pane 也会共享。
+
+`setup.sh` 会链接 `~/.config/kitty/kitty.conf` 并安装 ImageMagick，但不会自动安装可选的 Kitty terminal。首次链接配置后需要完整重启 Kitty，`listen_on` 和 `dynamic_background_opacity` 才会生效。
+
+本机 iTerm2 位于前台且 helper 在线时，Auto 回退显示 `iTerm2 · local bridge`，支持图片、透明度和模糊。从 Mac 的交互式 shell 执行普通 `ssh` 时会通过 `ssh -G` 检查有效配置，只在缺失时自动反向转发 `127.0.0.1:47790`；远端 Nvim 随后显示 `iTerm2 · SSH bridge`，远端 Yazi 图片会按内容哈希上传到 Mac 缓存。显式传入任意 `ssh -R` 时保持原行为、不自动注入 bridge；设置 `DARWIN_NO_REMOTE_BACKGROUND=1` 可单独关闭自动背景转发。
+
+Kitty / iTerm2 renderer 都只在 Nvim 至少有一个 UI attach 时临时生效。`Space d`、`:detach` 或 `:qa` 使最后一个 UI 离开后，Kitty 会清掉受管图片并恢复捕获的 opacity，iTerm2 会恢复进入 Nvim 前的 profile；之后重新 attach 时再按已保存的 Nvim 设置应用。面板的保存只持久化 Nvim 设置，不会把临时背景留在退出后的终端。
 
 ---
 
@@ -159,7 +165,7 @@ live 列表按 `CURRENT`、`DETACHED`、`ATTACHED` 排序，并显示 Codex 状�
 
 从刚启动的未命名空白 `nvim` / `nvim .` 连接时，这个入口实例会自动回收；如果当前实例已命名、已有分屏、多个 buffer、未保存修改、terminal，或它本身曾被 detach，则切换后仍留在后台，可以再通过 `Space fs` 切回来。
 
-隐藏 host 使用单独的 tmux socket `dotfiles-nvim-host`，前台仍是直接的 Neovim remote UI，不会出现 tmux 状态栏、copy mode 或滚动拦截；普通 `tmux ls` 也看不到它。即使当前 nvim 启动时没有预先导出 `DOTFILES_NVIM_SESSION_DIR` / `DOTFILES_NVIM_TMUX_SERVER`，配置也会回退到与 `.shared_rc` 相同的默认值；Dashboard 新建 session 会把这些值显式传给 hidden host，创建校验失败时会回收本次刚拉起的空 host。host 创建 socket 后还必须在 2 秒内通过真实 RPC 探活，失败时只回收本次新建的空 session。排查时可运行 `tmux -L dotfiles-nvim-host ls`。`:qa` / `:qa!` 会正常结束对应 Nvim session、socket；最后一个 session 退出后隐藏 tmux server 也自动结束。`nvim --headless`、`--server`、`--listen`、管道输入等工具调用会自动绕过托管；临时需要完全直启时可用 `command nvim ...`。
+隐藏 host 使用单独的 tmux socket `dotfiles-nvim-host`，前台仍是直接的 Neovim remote UI，不会出现 tmux 状态栏、copy mode 或滚动拦截；普通 `tmux ls` 也看不到它。新建或连接 session 时会同步当前 UI 的 terminal 类型、Kitty remote-control socket、iTerm2 / WezTerm 上下文和 terminfo，背景 renderer 不会继续沿用 hidden host 的旧终端环境。即使当前 nvim 启动时没有预先导出 `DOTFILES_NVIM_SESSION_DIR` / `DOTFILES_NVIM_TMUX_SERVER`，配置也会回退到与 `.shared_rc` 相同的默认值；Dashboard 新建 session 会把这些值显式传给 hidden host，创建校验失败时会回收本次刚拉起的空 host。host 创建 socket 后还必须在 2 秒内通过真实 RPC 探活，失败时只回收本次新建的空 session。排查时可运行 `tmux -L dotfiles-nvim-host ls`。`:qa` / `:qa!` 会正常结束对应 Nvim session、socket；最后一个 session 退出后隐藏 tmux server 也自动结束。`nvim --headless`、`--server`、`--listen`、管道输入等工具调用会自动绕过托管；临时需要完全直启时可用 `command nvim ...`。
 
 ---
 
@@ -235,6 +241,8 @@ browser 内（telescope 默认键）：
 | `[a` / `]a`（Codex terminal normal） | 跳到上 / 下一条 Codex 回答开头并置顶；连续按可逐轮翻阅，支持 `2[a` / `2]a` 数字前缀 |
 | `gx`（Codex terminal normal/visual） | 打开光标下或 visual 选中的绝对/项目相对路径；支持 `:行:列` / `#L行C列`，忽略末尾或紧邻后续正文的中英文标点，在上一个非 terminal 编辑窗口跳转 |
 | `Option + +` / `Option + -` | 增高 / 降低当前底部 shell drawer；这是唯一允许的高度调整入口 |
+
+> macOS 下这些 `Option` 快捷键要求 terminal 把 Option 作为 Alt/Meta 传给 Nvim。仓库管理的 Kitty 配置已设置 `macos_option_as_alt both`；这个 Kitty 启动选项修改后必须完整退出并重新打开 Kitty，单纯 reload 配置不会生效。
 
 > Codex 和 Grok 都不属于 drawer：首次按 `Option+/` 会在当前普通窗口启动所选 agent，若 shell drawer 正显示会先自动收起；再次按回到它替换前的 buffer，进程和阅读位置继续保留。该 agent 已显示在其他普通窗口时，`Option+/` 只聚焦那个窗口。二者和 `Space t` 完整 terminal 一样可进入 `Space fb` / `:ls`、参与分屏和窗口操作、用 `dd` 确认后结束。底部 drawer 只保留普通 shell，继续全宽贴底并受 guardian 保护。
 
@@ -438,6 +446,8 @@ browser 内（telescope 默认键）：
 ---
 
 ## 光标移动
+
+光标拖影动画当前默认开启，但已缩短长度并加快收尾；单格 `hjkl`、insert mode、buffer 切换和命令行切换不触发。想临时关闭或重新开启时执行 `:SmearCursorToggle`。
 
 | 按键 | 操作 |
 |------|------|

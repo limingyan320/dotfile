@@ -11,10 +11,12 @@ local TERMINAL_GROUPS = {
   FoldColumn = "DotfilesBackgroundTerminalFoldColumn",
 }
 local MODES = { theme = true, tint = true, image = true, transparent = true }
+local RENDERERS = { auto = true, nvim = true }
 local IMAGE_MODES = { fill = true, fit = true, stretch = true, tile = true }
 local DEFAULTS = {
-  version = 1,
+  version = 2,
   mode = "theme",
+  renderer = "auto",
   hue = 0,
   saturation = 0,
   lightness = 0,
@@ -56,6 +58,7 @@ local function normalize_settings(value)
   value = type(value) == "table" and value or {}
   local result = vim.deepcopy(DEFAULTS)
   result.mode = MODES[value.mode] and value.mode or result.mode
+  result.renderer = RENDERERS[value.renderer] and value.renderer or result.renderer
   result.image_mode = IMAGE_MODES[value.image_mode] and value.image_mode or result.image_mode
   result.hue = clamp(round(tonumber(value.hue) or result.hue), -180, 180)
   result.saturation = clamp(round(tonumber(value.saturation) or result.saturation), -100, 100)
@@ -429,12 +432,19 @@ function M.computed_color(settings)
 end
 
 function M.renderer_status()
+  if state.renderer == "nvim" then
+    return {
+      label = "Renderer off",
+      detail = "Nvim colors only",
+      capabilities = { color = true },
+    }
+  end
   return renderer.status()
 end
 
 function M.bridge_status()
-  local status = renderer.status()
-  return status.label .. (status.detail and (" · " .. status.detail) or ""), status.label ~= "Nvim colors only"
+  local status = M.renderer_status()
+  return status.label .. (status.detail and (" · " .. status.detail) or ""), status.label ~= "Renderer off"
 end
 
 function M._transform_color(value, settings)

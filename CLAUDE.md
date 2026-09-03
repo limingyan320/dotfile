@@ -15,6 +15,7 @@ shell/.bashrc        <- Linux/WSL 专用：bash 补全、PS1 提示符
 shell/.bash_profile  <- Linux/WSL 的 login shell 入口，统一转发到 .bashrc，保证 SSH 登录也加载 .shared_rc
 nvim/.config/nvim/   <- Neovim 配置，跨平台通用，使用 lazy.nvim 管理插件
 tmux/.tmux.conf      <- tmux 配置，跨平台通用，剪贴板自动检测 (pbcopy/wl-copy/xclip/clip.exe)
+kitty/kitty.conf     <- Kitty 可选终端配置；为 Nvim 背景 adapter 开启同用户 remote-control socket 和动态透明度
 fastfetch/           <- fastfetch 配置、raw logo 和 preset；setup.sh 链到 ~/.config/fastfetch/
 codex-notifications/ <- Codex notify + lifecycle hooks；记录每个 Nvim session 的 working/ready/seen，macOS listener 按 turn ID 管理可联动关闭的 Swift 弹窗；SSH 远端经反向转发回 Mac；apply.sh 合并 ~/.codex/config.toml / hooks.json
 claude-notifications/<- claude-notifications-go 插件的自定义资源（音效/图标/标题），apply.sh 合并进 ~/.claude/claude-notifications-go/config.json
@@ -23,7 +24,7 @@ codex-skills/        <- Codex 专用 skill（如 nvim-quickref），setup.sh 把
 karabiner/           <- (macOS) Karabiner-Elements 键盘映射（Caps Lock 层、双 Shift 切输入法、外设键盘左 Cmd⇄左 Option；内置键盘保持原生）；setup.sh 把整个目录链到 ~/.config/karabiner（必须目录级链接，GUI 保存会替换单文件 symlink）；automatic_backups/ 已 gitignore
 raycast/             <- (macOS) Raycast extension hotkeys / aliases / preferences 的官方 .rayconfig 手动迁移说明；不 symlink Raycast 数据库
 iterm2-imgpaste/     <- (macOS) iTerm2 快捷键把 Mac 剪贴板图片 push 到远端 SSH 会话、以 bracketed paste 注入 agent 输入框；setup.sh 调 install.sh 把 daemon 链到 iTerm2 AutoLaunch
-nvim-background/     <- (macOS, optional) Nvim 通用背景面板的 iTerm2 renderer；本机走 Unix socket，SSH 走 loopback 反向 bridge，图片、透明度、模糊只写当前临时 profile
+nvim-background/     <- (macOS, optional) Nvim 通用背景面板的 iTerm2 renderer；Kitty renderer 直接位于 Nvim 配置中，不依赖此 helper
 setup.sh             <- 一键安装/同步脚本，自动检测包管理器 (brew/rpm-ostree/dnf/apt) 和平台，重跑安全
 ```
 

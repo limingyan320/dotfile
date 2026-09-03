@@ -125,7 +125,7 @@ echo ""
 
 case "$PKG_MANAGER" in
     brew)
-        for pkg in neovim tmux git fastfetch ripgrep yazi chafa; do
+        for pkg in neovim tmux git fastfetch ripgrep yazi chafa imagemagick; do
             if brew list "$pkg" &>/dev/null; then
                 warn "$pkg 已安装，跳过"
             else
@@ -136,7 +136,7 @@ case "$PKG_MANAGER" in
         ;;
     rpm-ostree)
         NEED_INSTALL=()
-        for pkg in neovim tmux git wl-clipboard bash-completion fastfetch ripgrep yazi chafa; do
+        for pkg in neovim tmux git wl-clipboard bash-completion fastfetch ripgrep yazi chafa ImageMagick; do
             if rpm -q "$pkg" &>/dev/null; then
                 warn "$pkg 已安装，跳过"
             else
@@ -152,7 +152,7 @@ case "$PKG_MANAGER" in
         fi
         ;;
     dnf)
-        for pkg in neovim tmux git wl-clipboard bash-completion fastfetch ripgrep yazi chafa; do
+        for pkg in neovim tmux git wl-clipboard bash-completion fastfetch ripgrep yazi chafa ImageMagick; do
             if rpm -q "$pkg" &>/dev/null; then
                 warn "$pkg 已安装，跳过"
             else
@@ -165,7 +165,7 @@ case "$PKG_MANAGER" in
         info "正在更新软件包列表..."
         sudo apt update || warn "apt update 失败（可能是网络/代理问题），继续尝试安装已缓存的包"
         # neovim 单独处理：live session 需要 0.12，老发行版 apt 仓库版本不足
-        for pkg in tmux git xclip bash-completion ripgrep python3-tomli yazi chafa; do
+        for pkg in tmux git xclip bash-completion ripgrep python3-tomli yazi chafa imagemagick; do
             if dpkg -s "$pkg" &>/dev/null; then
                 warn "$pkg 已安装，跳过"
             else
@@ -391,6 +391,7 @@ link_file "$DOTFILES/tmux/.tmux.conf"            "$HOME/.tmux.conf"
 link_file "$DOTFILES/tmux/.tmux-context.sh"      "$HOME/.tmux-context.sh"
 link_file "$DOTFILES/tmux/open-context-pane.sh"  "$HOME/.tmux-open-context-pane.sh"
 link_file "$DOTFILES/starship/starship.toml"     "$HOME/.config/starship.toml"
+link_file "$DOTFILES/kitty/kitty.conf"           "$HOME/.config/kitty/kitty.conf"
 link_file "$DOTFILES/fastfetch/config.jsonc"     "$HOME/.config/fastfetch/config.jsonc"
 link_file "$DOTFILES/fastfetch/logos"            "$HOME/.config/fastfetch/logos"
 link_file "$DOTFILES/fastfetch/presets"          "$HOME/.config/fastfetch/presets"

@@ -14,8 +14,8 @@ local function emit_status()
 end
 
 local function terminal_hint()
-  if vim.env.KITTY_WINDOW_ID or vim.env.KITTY_PID then
-    return "Kitty detected"
+  if vim.env.KITTY_WINDOW_ID or vim.env.KITTY_PID or tostring(vim.env.TERM or ""):find("kitty", 1, true) then
+    return "Kitty control unavailable"
   end
   if vim.env.WEZTERM_PANE or vim.env.WEZTERM_EXECUTABLE then
     return "WezTerm detected"
@@ -31,6 +31,10 @@ local function terminal_hint()
     return "SSH bridge unavailable"
   end
   return "No terminal renderer"
+end
+
+local function bypassed(settings)
+  return type(settings) == "table" and settings.renderer == "nvim"
 end
 
 local function finish_detection(adapter, error_message)
@@ -73,14 +77,22 @@ function M.setup(opts)
     adapters = {}
     return
   end
-  local ok, iterm2 = pcall(require, "dotfiles.background_renderers.iterm2")
-  if not ok or type(iterm2) ~= "table" then
-    adapters = {}
-    detection_error = ok and "iTerm2 adapter returned an invalid module" or tostring(iterm2)
-    return
+  local failures = {}
+  local function register(name, adapter_opts)
+    local ok, adapter = pcall(require, "dotfiles.background_renderers." .. name)
+    if not ok or type(adapter) ~= "table" then
+      failures[#failures + 1] = ok and (name .. " adapter returned an invalid module") or tostring(adapter)
+      return
+    end
+    adapter.setup(vim.tbl_extend("force", adapter_opts or {}, { on_status = emit_status }))
+    adapters[#adapters + 1] = adapter
   end
-  iterm2.setup(vim.tbl_extend("force", opts.iterm2 or {}, { on_status = emit_status }))
-  adapters = { iterm2 }
+  adapters = {}
+  register("kitty", opts.kitty)
+  register("iterm2", opts.iterm2)
+  if #adapters == 0 and #failures > 0 then
+    detection_error = failures[#failures]
+  end
 end
 
 function M.detect(callback, force)
@@ -110,6 +122,12 @@ function M.detect(callback, force)
 end
 
 function M.refresh(settings)
+  if bypassed(settings) then
+    if active and active.bypass then
+      active.bypass(settings)
+    end
+    return
+  end
   M.detect(function(adapter)
     if adapter then
       adapter.apply(settings)
@@ -140,14 +158,36 @@ end
 
 function M.restore(settings, transaction)
   if transaction and transaction._adapter then
-    transaction._adapter.restore(settings, transaction)
+    local adapter = transaction._adapter
+    if bypassed(settings) and adapter.release then
+      adapter.release(function() end)
+    else
+      adapter.restore(settings, transaction)
+    end
   end
 end
 
 function M.commit(settings, transaction, callback)
   callback = callback or function() end
   if transaction and transaction._adapter then
-    transaction._adapter.commit(settings, transaction, callback)
+    local adapter = transaction._adapter
+    if bypassed(settings) and adapter.release then
+      adapter.release(callback)
+    else
+      adapter.commit(settings, transaction, callback)
+    end
+    return
+  end
+  if bypassed(settings) then
+    if active and active.release then
+      active.release(callback)
+    elseif active and active.bypass then
+      active.bypass(settings, callback)
+    else
+      vim.schedule(function()
+        callback(true, { bypassed = true })
+      end)
+    end
     return
   end
   M.detect(function(adapter, error_message)

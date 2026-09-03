@@ -276,6 +276,15 @@ local function apply_settings(settings, transaction, callback)
   callback = callback or function() end
   apply_serial = apply_serial + 1
   local serial = apply_serial
+  if settings.renderer == "nvim" then
+    local authorization = transaction or lease
+    if not authorization or not authorization.transaction_id then
+      callback(true, { bypassed = true })
+      return
+    end
+    send(vim.tbl_extend("force", transaction_fields(authorization), { action = "restore" }), 5000, callback)
+    return
+  end
   if settings.mode == "theme" or settings.mode == "tint" then
     send(vim.tbl_extend("force", transaction_fields(transaction), { action = "restore" }), 5000, callback)
     return
@@ -448,6 +457,10 @@ end
 
 function M.apply(settings, callback)
   apply_with_lease(settings, callback)
+end
+
+function M.bypass(settings, callback)
+  apply_settings(settings, nil, callback)
 end
 
 function M.commit(settings, transaction, callback)
