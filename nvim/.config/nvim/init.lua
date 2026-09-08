@@ -402,18 +402,14 @@ end
 
 local managed_nvim_session_dir = dotfiles_nvim_session_dir()
 local managed_nvim_tmux_server = dotfiles_nvim_tmux_server()
+local nvim_session_host = require("dotfiles.nvim_session_host").new({
+  session_dir = managed_nvim_session_dir,
+  tmux_server = managed_nvim_tmux_server,
+  timeout_ms = nvim_rpc_timeout_ms,
+})
 
 local function managed_nvim_session_id(address)
-  if not managed_nvim_session_dir or managed_nvim_session_dir == "" then
-    return nil
-  end
-
-  local parent = vim.fs.normalize(vim.fn.fnamemodify(address, ":h"))
-  if parent ~= vim.fs.normalize(managed_nvim_session_dir) then
-    return nil
-  end
-
-  return vim.fn.fnamemodify(address, ":t"):match("^(nvim%-.+)%.sock$")
+  return nvim_session_host:session_id(address)
 end
 
 local function current_nvim_session_is_managed()
@@ -445,23 +441,7 @@ local function managed_nvim_session_addresses()
 end
 
 local function remove_stale_managed_nvim_socket(address)
-  local session_id = managed_nvim_session_id(address)
-  if not session_id or vim.fn.executable("tmux") ~= 1 then
-    return
-  end
-
-  local result = vim.system({
-    "tmux",
-    "-L",
-    managed_nvim_tmux_server,
-    "has-session",
-    "-t",
-    session_id,
-  }, { text = true, env = { TMUX = "" } }):wait(nvim_rpc_timeout_ms)
-  local stat = uv.fs_stat(address)
-  if result.code ~= 0 and result.code ~= 124 and stat and stat.type == "socket" then
-    uv.fs_unlink(address)
-  end
+  nvim_session_host:remove_stale_socket(address)
 end
 
 local function discover_nvim_sessions()
@@ -721,36 +701,12 @@ local function create_managed_nvim_session(name, cwd, callback)
 end
 
 local function stop_managed_nvim_session(address)
-  local session_id = managed_nvim_session_id(address)
-  if not session_id then
-    return false, "不是受托管的 Nvim session"
-  end
-  if vim.fn.executable("tmux") ~= 1 then
-    return false, "找不到 tmux，无法清理托管 session"
-  end
-
-  local result = vim.system({
-    "tmux",
-    "-L",
-    managed_nvim_tmux_server,
-    "kill-session",
-    "-t",
-    session_id,
-  }, { text = true, env = { TMUX = "" } }):wait(nvim_rpc_timeout_ms)
-  if result.code ~= 0 then
-    local detail = vim.trim(result.stderr or "")
-    return false, detail ~= "" and detail or "隐藏 tmux session 未能停止"
-  end
-  local stat = uv.fs_stat(address)
-  if stat and stat.type == "socket" then
-    uv.fs_unlink(address)
-  end
-  return true
+  return nvim_session_host:force_stop(address)
 end
 
 local stop_session_lua = [=[
 vim.schedule(function()
-  vim.cmd("qa!")
+  vim.cmd("silent! qa!")
 end)
 return true
 ]=]
@@ -766,10 +722,19 @@ local function stop_nvim_session(session, callback)
     callback(stopped, err)
   end
 
+  local managed = managed_nvim_session_id(session.address) ~= nil
+  if managed then
+    local armed, watchdog_err = nvim_session_host:arm_watchdog(session.address)
+    if not armed then
+      callback(false, watchdog_err)
+      return
+    end
+  end
+
   -- 让目标 Nvim 在当前 RPC 返回后自行退出，避免 qa! 让请求半途断开。
   local accepted, err = request_remote_nvim(session.address, stop_session_lua)
   if accepted ~= true then
-    if managed_nvim_session_id(session.address) then
+    if managed then
       force_stop_managed()
     else
       callback(false, err or "目标 session 已不可用")
@@ -780,12 +745,25 @@ local function stop_nvim_session(session, callback)
   local attempts = 0
   local function wait_for_exit()
     attempts = attempts + 1
+    if managed then
+      local running, check_err = nvim_session_host:has_session(session.address)
+      if running == false then
+        nvim_session_host:remove_stale_socket(session.address)
+        callback(true)
+      elseif attempts < 20 then
+        vim.defer_fn(wait_for_exit, 100)
+      elseif running == nil then
+        callback(false, check_err or "无法确认目标 session 是否退出")
+      else
+        force_stop_managed()
+      end
+      return
+    end
+
     if not fetch_nvim_session(session.address) then
       callback(true)
     elseif attempts < 5 then
       vim.defer_fn(wait_for_exit, 100)
-    elseif managed_nvim_session_id(session.address) then
-      force_stop_managed()
     else
       callback(false, "目标 session 未能退出")
     end
@@ -793,9 +771,15 @@ local function stop_nvim_session(session, callback)
   vim.defer_fn(wait_for_exit, 100)
 end
 
-local function stop_current_nvim_session()
+local function stop_current_nvim_session(session)
+  local address = session and session.address or vim.v.servername
+  local armed, watchdog_err = nvim_session_host:arm_watchdog(address)
+  if not armed then
+    vim.notify("删除当前 Nvim session 失败: " .. tostring(watchdog_err), vim.log.levels.ERROR)
+    return
+  end
   vim.schedule(function()
-    local ok, err = pcall(vim.cmd, "qa!")
+    local ok, err = pcall(vim.cmd, "silent! qa!")
     if not ok then
       vim.notify("删除当前 Nvim session 失败: " .. tostring(err), vim.log.levels.ERROR)
     end
@@ -1666,6 +1650,13 @@ local codex_terminal_activity = require("dotfiles.codex_terminal_activity").setu
     return read_codex_agent_state(vim.v.servername)
   end,
   mark_idle = mark_codex_agent_idle,
+})
+vim.api.nvim_create_autocmd("VimLeavePre", {
+  group = vim.api.nvim_create_augroup("DotfilesCodexTerminalActivityShutdown", { clear = true }),
+  once = true,
+  callback = function()
+    codex_terminal_activity:close()
+  end,
 })
 
 local function terminal_drawer_buffer(bufnr)
