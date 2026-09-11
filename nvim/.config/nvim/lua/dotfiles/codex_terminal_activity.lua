@@ -1,4 +1,5 @@
 local uv = vim.uv or vim.loop
+local ui_poll = require("dotfiles.ui_poll")
 
 local M = {}
 local Monitor = {}
@@ -19,7 +20,9 @@ end
 
 local function close_watcher(watcher)
   if watcher then
-    close_timer(watcher.poll_timer)
+    if watcher.poll_timer then
+      watcher.poll_timer:close()
+    end
     close_timer(watcher.idle_timer)
   end
 end
@@ -41,11 +44,13 @@ end
 
 function Monitor:title_activity(bufnr)
   local watcher = self.watchers[bufnr]
-  if not watcher then
+  if not watcher or not watcher.poll_timer or not watcher.poll_timer.running then
     return
   end
 
   stop_timer(watcher.idle_timer)
+  watcher.idle_generation = watcher.idle_generation + 1
+  local generation = watcher.idle_generation
   local turn_id = self:_working_turn()
   if not turn_id then
     return
@@ -55,7 +60,11 @@ function Monitor:title_activity(bufnr)
     self.idle_delay_ms,
     0,
     vim.schedule_wrap(function()
-      if self.watchers[bufnr] == watcher and self:_working_turn() == turn_id then
+      if self.watchers[bufnr] == watcher
+        and watcher.poll_timer.running
+        and watcher.idle_generation == generation
+        and self:_working_turn() == turn_id
+      then
         self:_mark_idle(turn_id, "terminal-title-idle")
       end
     end)
@@ -94,20 +103,29 @@ function Monitor:attach(bufnr)
     return
   end
   local watcher = {
-    poll_timer = assert(uv.new_timer()),
     idle_timer = assert(uv.new_timer()),
+    idle_generation = 0,
   }
   self.watchers[bufnr] = watcher
-  self:sample_title(bufnr)
-  watcher.poll_timer:start(
-    self.poll_interval_ms,
-    self.poll_interval_ms,
-    vim.schedule_wrap(function()
+  watcher.poll_timer = ui_poll.new({
+    interval_ms = self.poll_interval_ms,
+    callback = function()
       if self.watchers[bufnr] == watcher then
         self:sample_title(bufnr)
       end
-    end)
-  )
+    end,
+    on_pause = function()
+      watcher.idle_generation = watcher.idle_generation + 1
+      stop_timer(watcher.idle_timer)
+    end,
+    on_resume = function()
+      -- Re-arm the idle deadline from a fresh title after a detached interval.
+      watcher.last_title = nil
+    end,
+  })
+  if watcher.poll_timer.running then
+    self:sample_title(bufnr)
+  end
 end
 
 function Monitor:close()
@@ -138,7 +156,7 @@ function M.setup(opts)
 
   if opts.register_autocmds ~= false then
     local group = vim.api.nvim_create_augroup("DotfilesCodexTerminalActivity", { clear = true })
-    vim.api.nvim_create_autocmd("TermClose", {
+    vim.api.nvim_create_autocmd({ "TermClose", "BufWipeout" }, {
       group = group,
       callback = function(event)
         monitor:terminal_exit(event.buf)

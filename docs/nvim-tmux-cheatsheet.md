@@ -139,6 +139,8 @@ Neovim 0.12 可以把当前 TUI 脱离，但让原来的 Nvim 进程继续在后
 
 Dashboard 默认不加载统计模块、不采样内存，也不预留内存列；`Space fs` 和 `R` 都只处理 session / tag 数据。只有在 Session 模式按 `M` 后，才会现场加载统计模块，并在每个 session 行的 buffer 右侧显示 `MEM` 总量和 `N / L / C / O`（Nvim / LSP / Codex / Other）分类；标题行同时显示全部 live session 与未托管 Nvim 的汇总，`U` 表示不属于隐藏 host 中任何 live session 的孤儿、headless 或测试 Nvim。macOS 使用能覆盖压缩内存的 physical footprint，Linux 使用 PSS + swap，取不到平台指标时回退 RSS。快照保留到本次 Dashboard 关闭，再按 `M` 才重新采样。
 
+最后一个 UI detach 后，Dashboard 动画、Codex title 轮询 / idle timer、lualine 状态栏刷新及刷新检查 timer 会停止，重新 attach 后恢复；关闭一个 UI 但仍有其他 UI attached 时继续运行。周期轮询每个最多保留一个待执行回调，防止主循环阻塞（例如只输入 `g` 后等待后续按键）时积压。无 UI 期间 Codex 的外部 hook / notify 仍正常写入完成状态和通知；中断回合的 title 静默兜底会在重新接入、重新采样后恢复。
+
 Session 列表最左侧有固定 3 格 Codex 状态：流动的 `●·· → ·●· → ··●` 表示 agent 正在工作；闪烁的红色 `!` 表示该 session 已完成但还没有查看。动画只在 Dashboard 打开且至少有一个 UI 接入时刷新；UI 全部脱离后暂停、重连后继续。状态会一直保留到 check；动画刷新不会把 `j` / `k` 的当前选择拉回默认项。Codex 回合被 `Esc` 中断时可能没有 `Stop` hook；每个 Nvim session 会在后台采样自己 Codex terminal 的 title spinner，连续静默 6 秒或 terminal 退出后，仅把同一 turn 仍残留的 `working` 清回 idle，不会覆盖正常完成的红色未读状态。
 
 每个 session 行用高亮 `◆ 数量 · 更新时间` 标出已有 tag；无记录时显示灰色 `◇ 0`。Session 模式始终只 cascade 展开当前焦点：`j` / `k`、鼠标定位或原生搜索跳到另一个 session 行时，旧 cascade 收起、新 cascade 自动展开。展开内容按 `Today` / `Yesterday` / 日期分组，时间来自创建 tag 时保存的 Unix timestamp，再按本机时区换算显示。Tag 模式只是 Dashboard 的操作子模式，两层都仍是 Vim normal mode；记录正文才是普通 Markdown buffer，支持完整 Vim normal / insert 操作。修改停止约 400ms 后自动保存，离开 insert、关闭窗口或离开 buffer 时也会强制保存；编辑器 normal mode 下按 `q` 保存并回到 Tag 模式，`Ctrl+S` 可立即写盘。

@@ -12,6 +12,10 @@ package.path = table.concat({
 }, ";")
 
 local activity = require("dotfiles.codex_terminal_activity")
+local list_uis = vim.api.nvim_list_uis
+vim.api.nvim_list_uis = function()
+  return { { chan = 1 } }
+end
 
 local state = { state = "working", turn_id = "turn-1" }
 local idle_calls = {}
@@ -136,6 +140,7 @@ assert_equal(idle_calls[1], {
 }, "OSC title integration")
 pcall(vim.fn.jobstop, osc_job)
 osc_monitor:close()
+vim.api.nvim_list_uis = list_uis
 
 print("codex terminal activity: ok")
 vim.cmd("qa!")

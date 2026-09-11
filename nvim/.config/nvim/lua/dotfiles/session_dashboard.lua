@@ -1236,10 +1236,7 @@ local function stop_dashboard_timer(state)
     return
   end
   state.timer_closed = true
-  state.timer:stop()
-  if not state.timer:is_closing() then
-    state.timer:close()
-  end
+  state.timer:close()
 end
 
 local function close_note_editor(state)
@@ -2031,19 +2028,13 @@ local function schedule_cursor_focus_sync(state)
 end
 
 local function start_dashboard_timer(state)
-  state.timer = uv.new_timer()
-  state.timer:start(
-    220,
-    220,
-    vim.schedule_wrap(function()
+  state.timer = require("dotfiles.ui_poll").new({
+    interval_ms = 220,
+    callback = function()
       if state.timer_closed or not dashboard_valid(state) then
         stop_dashboard_timer(state)
         return
       end
-      if #vim.api.nvim_list_uis() == 0 then
-        return
-      end
-
       state.animation_frame = state.animation_frame + 1
       local should_render = false
       for _, session in ipairs(state.sessions) do
@@ -2064,8 +2055,8 @@ local function start_dashboard_timer(state)
       if should_render then
         render_dashboard(state)
       end
-    end)
-  )
+    end,
+  })
 end
 
 function M.setup(opts)

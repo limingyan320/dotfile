@@ -98,6 +98,7 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 - Powerline 三角分隔符：`section_separators = { left = "", right = "" }`, `component_separators = { left = "", right = "" }`
 - 最左侧用固定青色组件显示当前 live session 的逻辑名称，后面才是动态着色的 Vim mode；未命名时回退为项目目录名，最长 20 显示列，非 session 实例隐藏
 - Session Dashboard 重命名会主动刷新 lualine，名称立即更新
+- `dotfiles.lualine_lifecycle` 为 lualine 的刷新及刷新检查 timer 增加 UI 生命周期和单回调上限：最后一个 UI detach 时停止，attach 时恢复，等待未完成按键时也不会无限入队；保留插件自身的错误处理
 
 ### `SmiteshP/nvim-navic` — 当前代码位置 breadcrumb
 - 作为 `nvim-lspconfig` 依赖加载
@@ -117,6 +118,8 @@ Kitty 中的 `Auto` 优先使用官方 remote-control socket，Backend 显示 `K
 Kitty / iTerm2 renderer 都只在 Nvim 至少有一个 UI attach 时生效。新建 live session 或从 Dashboard 连接其他 session 时，会把当前 UI 的 Kitty / iTerm2 / WezTerm 环境和 Kitty socket 同步给隐藏 Nvim host。`<leader>d` / `:detach` 或 `:qa` 让最后一个 UI 离开后恢复进入 Nvim 前捕获的终端状态；重新 attach 时再应用已保存的 Nvim 背景。面板保存只持久化 Nvim 设置，不会把临时背景留在退出后的终端。
 
 ### 原生 Live Session Dashboard
+
+最后一个 UI detach 时暂停 Dashboard 动画、Codex title 轮询和 idle timer，重新 attach 后恢复并重新计算 title 静默期；仍有其他 UI attached 时继续运行。每个周期轮询最多排队一个主循环回调，旧回调在暂停 / 关闭后失效。无 UI 时外部 Codex hook / notify 仍更新状态，中断回合的 title 静默兜底延后到重新接入后执行。
 
 `<leader>fs` 打开 normal-first 的 Mason 风格 Dashboard 并进入 `Nvim Sessions` 模式；live session 按 `CURRENT` → `DETACHED` → `ATTACHED` 排列。最左侧固定 3 格 agent 列中，流动 `●··` 表示 Codex working，闪烁红色 `!` 表示 ready/unread；`◆ 数量 · 新鲜度` 表示已有人工进度，`◇ 0` 表示无记录。默认打开和按 `R` 都不加载统计模块、不采样或预留内存列；只有 Session 模式按 `M` 才现场加载并显示每个 session 的 `MEM` 总量、`N / L / C / O`（Nvim / LSP / Codex / Other）、全局汇总与未归属 Nvim 的 `U`，再次按 `M` 更新快照，关闭 Dashboard 后丢弃。macOS 统计 physical footprint，Linux 统计 PSS + swap，失败时回退 RSS。聚焦的 session 有 tag 时会自动 cascade 展开，移动到其他 session 后旧 cascade 自动收起。跨 session RPC 仍并行且总超时 700ms，日志只从本机 `${DOTFILES_NVIM_SESSION_DIR}/notes/` 读取。
 

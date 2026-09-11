@@ -3366,6 +3366,9 @@ require("lazy").setup({
     "nvim-lualine/lualine.nvim",
     dependencies = { "nvim-tree/nvim-web-devicons" },
     event = "VeryLazy",
+    config = function(_, opts)
+      require("dotfiles.lualine_lifecycle").setup(opts)
+    end,
     opts = {
       options = {
         section_separators = { left = "", right = "" },
