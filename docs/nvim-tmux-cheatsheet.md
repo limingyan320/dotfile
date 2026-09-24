@@ -47,7 +47,7 @@
 
 | 按键 | 操作 |
 |------|------|
-| `Space z` | 临时放大当前普通 session window；底部 drawer 保持可见，再按一次恢复原分屏布局 |
+| `Space z` | 临时放大当前普通 session window；底部 drawer 保持可见，整条 winbar 变为红粉色 Focus 条，右侧深色反转 `FOCUS · Space z 恢复`，再按一次恢复原分屏布局 |
 | `Ctrl+W =` | 上方普通窗口等分，底部 drawer 不参与 |
 | `Ctrl+W >` / `<` | 上方普通窗口宽度增/减 |
 | `Ctrl+W +` / `-` | 上方普通窗口高度增/减 |
@@ -55,7 +55,7 @@
 | `Ctrl+W _` | 当前窗口最大化高度 |
 | `Ctrl+W \|` | 当前窗口最大化宽度 |
 
-> `Space z` 的实现是把当前普通 window 暂时放到单独 tab 里，所以恢复时会回到原来的分屏布局；drawer 会跟随到临时 tab 并继续固定在底部。上方本来只有一个普通 window 时会提示无需放大，从 drawer 内执行则直接拒绝。
+> `Space z` 的实现是把当前普通 window 暂时放到单独 tab 里，所以恢复时会回到原来的分屏布局；drawer 会跟随到临时 tab 并继续固定在底部。放大 tab 的整条 winbar 会变为醒目的 TokyoNight 红粉色 Focus 条，左侧文件名 / breadcrumb 保持深色高对比，右侧 `FOCUS · Space z 恢复` 再以深色底反转；仅影响这个临时 tab 的普通 window。上方本来只有一个普通 window 时会提示无需放大，从 drawer 内执行则直接拒绝。
 
 ### 移动窗口
 
@@ -355,7 +355,7 @@ browser 内（telescope 默认键）：
 
 | 按键 | 操作 |
 |------|------|
-| `Ctrl+Space` | 手动触发补全 |
+| `Ctrl+Space` | 手动触发补全（macOS 若被输入法切换快捷键拦截，Nvim 收不到；配置上仍保留该映射） |
 | `Up` / `Down` | 上下选择补全项 |
 | `Ctrl+P` / `Ctrl+N` | 上下选择补全项 |
 | `Enter` | 只在已选中候选项时确认补全；否则正常换行；位于 `{}` / `[]` / `()` 中间时会智能拆行 |
@@ -363,6 +363,10 @@ browser 内（telescope 默认键）：
 | `Tab` / `Shift+Tab` | 仅用于 snippet 前进 / 后退，不用来选补全项 |
 
 > 当前配置不默认预选第一项，所以像输入 `str` 时，按 `Enter` 不会擅自补成 `start`；要先用方向键显式选中再回车确认。光标在 `{}` / `[]` / `()` 中间时，如果没有选中补全项，`Enter` 会直接拆成三行并把闭括号对齐回起始缩进。
+
+> `blink.cmp` 没有配置“永久关闭补全”的快捷键。`:lua require("blink.cmp").show()` 只适合在插入模式上下文里测试，单独从命令模式执行不代表补全已恢复。若整个 live session 突然没有补全，先检查 `:verbose imap <Tab>`；如果只剩 Nvim 默认的 `vim.snippet.jump`，可执行 `:doautocmd <nomodeline> InsertEnter` 重新挂载当前 buffer 的 blink 映射。重新挂载后，`<Tab>` / `<CR>` / `<C-e>` 会恢复为 blink 动作；若 `<C-e>` 仍显示为“行尾”，同样说明当前 buffer 的 blink 映射尚未挂载。
+
+> 还有一个容易误触的状态：blink 在录制或执行 Vim 宏时会**刻意暂停补全**，避免候选菜单被录进宏。状态栏出现 `recording @q`（或其他寄存器）且整个 session 都没有补全时，直接按一次 `q` 结束录制；`:echo reg_recording()` 返回空字符串才表示已经恢复。录制尚未结束时，`:doautocmd <nomodeline> InsertEnter` 和 `:lua require("blink.cmp").show()` 都不会生效，这不是 LSP 或 Mason 故障。
 
 ---
 

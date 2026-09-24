@@ -16,7 +16,7 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 - Swift 例外：运行时 `ftplugin/swift.vim` 会把 `shiftwidth` / `softtabstop` 设为 4；普通可编辑 buffer 在 `{}` / `[]` / `()` 中间按 `<CR>` 时会自动拆成三行，并让闭括号对齐回起始缩进
 - 关闭了 `:` 触发的即时重缩进；像 Python / Lua / JavaScript 里在行尾 `A` 进入插入后输入 `:`，不会再把当前行“纠偏”到新的缩进列
 - `foldmethod = expr` + `foldexpr = v:lua.vim.treesitter.foldexpr()`；默认 `foldlevel/foldlevelstart = 99`，可折叠但打开文件时保持全部展开
-- 顶部 `winbar` 会显示当前 buffer 名或 `LSP symbol breadcrumb`（例如 `Module > Class > Method`）
+- 顶部 `winbar` 会显示当前 buffer 名或 `LSP symbol breadcrumb`（例如 `Module > Class > Method`）；`<leader>z` 的临时放大 tab 会把整条 winbar 切成醒目的 TokyoNight 红粉色 Focus 条，右侧深色反转 badge 显示 `FOCUS · Space z 恢复`
 - 滚动手感偏 IDE/网页：`scrolloff = 6` 保持光标上下文，`mousescroll = ver:2,hor:6` 降低鼠标滚轮跨度，`smoothscroll = true`；`<C-d>` / `<C-u>` 被改成视图下/上滚 6 行（可加数字前缀），光标尽量留在原位置
 - 搜索默认启用 `hlsearch + ignorecase + smartcase`，关闭 `incsearch`；`/pattern` 只登记搜索词并高亮，不滚动当前窗口视野，按 `n` / `N` 才跳转；`*` / `#` 第一次只高亮当前词，同一个词再按才跳转；可用 `/\c...` / `/\C...` 强制切换大小写规则
 - IDE 风格辅助：长函数时直接看顶部 `winbar` 知道自己在哪个函数里；想看模块骨架时用 `zc` / `zo` / `za` / `zM` / `zR`
@@ -39,7 +39,7 @@ description: Quick reference for the user's personal Neovim config at ~/.dotfile
 |------|----|------|
 | n/i | `<F2>` | toggle paste mode |
 | n | `<leader>vp` | toggle paste mode |
-| n | `<leader>z` | 临时放大当前普通 session window；drawer 保持在底部，再按一次恢复原分屏布局；drawer 内拒绝执行 |
+| n | `<leader>z` | 临时放大当前普通 session window；drawer 保持在底部，整条 winbar 变为红粉色 Focus 条，右侧深色反转 `FOCUS · Space z 恢复`，再按一次恢复原分屏布局；drawer 内拒绝执行 |
 | n | `<C-w>V` / `<C-w>S` | 在右侧 / 下方创建 split 并直接聚焦新窗口；原生小写 `<C-w>v/s` 继续在左侧 / 上方创建并聚焦 |
 | n | `<C-w>c/q` | 关闭当前普通窗口；`<leader>t` 完整 terminal 同样可关闭，底部 drawer 内拒绝执行 |
 | n | `<C-w>o` | 只保留当前普通 session window 和底部 drawer；可从完整 terminal 执行，drawer 内拒绝执行 |
@@ -214,11 +214,14 @@ LSP 键位：
 ### `saghen/blink.cmp` — 补全
 - `version = '*'`，依赖 `rafamadriz/friendly-snippets`
 - `keymap = { preset = 'enter' }`（更接近 IDE）:
-  - `<C-space>` 触发补全
+  - `<C-space>` 触发补全；macOS 若把它用于输入法切换，按键会在终端外被拦截，Nvim 实际收不到
   - `<Up>` / `<Down>` 或 `<C-p>` / `<C-n>` 上下选择
   - `<CR>` 只在**你已经选中候选项**时确认补全；否则正常换行；如果光标正在 `{}` / `[]` / `()` 中间，会智能拆行并让闭括号对齐
   - `<C-e>` 关闭补全菜单
   - `<Tab>` / `<S-Tab>` 只用于 snippet 前进 / 后退
+- 没有永久关闭补全的自定义快捷键。`:lua require("blink.cmp").show()` 需要插入模式上下文，不能单独从命令模式判断补全是否正常。
+- blink 在录制或执行 Vim 宏时会主动暂停补全，以免把候选菜单录进宏；状态栏出现 `recording @q`（或其他寄存器）且整个 session 突然没有补全时，按一次 `q` 结束录制即可。可用 `:echo reg_recording()` 确认；它返回空字符串才表示未在录制。此时 `:doautocmd <nomodeline> InsertEnter` 和手动 `show()` 都不会绕过该保护。
+- live session 若突然失去补全，先用 `:verbose imap <Tab>` 检查是否只剩 Nvim 默认的 `vim.snippet.jump`；若是，执行 `:doautocmd <nomodeline> InsertEnter` 重新挂载当前 buffer 的 blink buffer-local 映射。若 `<C-e>` 显示为行尾而不是 blink 的 Cancel，也属于同一症状。
 - `completion.list.selection = { preselect = false, auto_insert = false }`：不默认预选第一项，避免回车误补全
 - `sources.default = { lsp, path, snippets, buffer }`
 - `appearance = { use_nvim_cmp_as_default = true, nerd_font_variant = 'mono' }`

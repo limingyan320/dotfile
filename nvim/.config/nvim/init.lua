@@ -1024,22 +1024,105 @@ local function nvim_session_statusline_label()
   return truncate_statusline_text(name, session_statusline_max_width)
 end
 
+local window_zoom_bar_bg = "#f7768e"
+local window_zoom_bar_fg = "#1a1b26"
+
+local function define_window_zoom_highlights()
+  vim.api.nvim_set_hl(0, "DotfilesWindowZoomWinBar", {
+    fg = window_zoom_bar_fg,
+    bg = window_zoom_bar_bg,
+    bold = true,
+  })
+  vim.api.nvim_set_hl(0, "DotfilesWindowZoomWinBarNC", {
+    fg = window_zoom_bar_fg,
+    bg = "#bb5c73",
+    bold = true,
+  })
+  vim.api.nvim_set_hl(0, "DotfilesWindowZoomBadge", {
+    fg = window_zoom_bar_bg,
+    bg = window_zoom_bar_fg,
+    bold = true,
+  })
+end
+
+define_window_zoom_highlights()
+vim.api.nvim_create_autocmd("ColorScheme", {
+  group = vim.api.nvim_create_augroup("DotfilesWindowZoomHighlight", { clear = true }),
+  callback = define_window_zoom_highlights,
+})
+
+local function remove_window_zoom_winbar(winid)
+  if not vim.api.nvim_win_is_valid(winid) then
+    return
+  end
+
+  local parts = {}
+  for entry in vim.wo[winid].winhighlight:gmatch("[^,]+") do
+    if entry ~= "WinBar:DotfilesWindowZoomWinBar" and entry ~= "WinBarNC:DotfilesWindowZoomWinBarNC" then
+      parts[#parts + 1] = entry
+    end
+  end
+  vim.wo[winid].winhighlight = table.concat(parts, ",")
+end
+
+local function apply_window_zoom_winbar(winid)
+  if not vim.api.nvim_win_is_valid(winid) then
+    return
+  end
+
+  local bufnr = vim.api.nvim_win_get_buf(winid)
+  if not vim.t.dotfiles_zoomed or vim.bo[bufnr].buftype == "terminal" then
+    remove_window_zoom_winbar(winid)
+    return
+  end
+
+  local parts = {}
+  for entry in vim.wo[winid].winhighlight:gmatch("[^,]+") do
+    local source = entry:match("^([^:]+):")
+    if source ~= "WinBar" and source ~= "WinBarNC" then
+      parts[#parts + 1] = entry
+    end
+  end
+  parts[#parts + 1] = "WinBar:DotfilesWindowZoomWinBar"
+  parts[#parts + 1] = "WinBarNC:DotfilesWindowZoomWinBarNC"
+  vim.wo[winid].winhighlight = table.concat(parts, ",")
+end
+
+local window_zoom_winbar_group = vim.api.nvim_create_augroup("DotfilesWindowZoomWinBar", { clear = true })
+vim.api.nvim_create_autocmd({ "WinNew", "WinEnter", "BufWinEnter" }, {
+  group = window_zoom_winbar_group,
+  callback = function()
+    apply_window_zoom_winbar(vim.api.nvim_get_current_win())
+  end,
+})
+
+local function window_zoom_badge()
+  if not vim.t.dotfiles_zoomed then
+    return ""
+  end
+  return "%=%#DotfilesWindowZoomBadge# FOCUS · Space z 恢复 %*"
+end
+
 function _G.dotfiles_winbar()
   if vim.bo.buftype ~= "" then
-    return ""
+    return window_zoom_badge()
   end
 
+  local label
   local ok, navic = pcall(require, "nvim-navic")
   if ok and navic.is_available() then
-    return statusline_escape(" " .. navic.get_location())
+    label = " " .. navic.get_location()
+  else
+    local name = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(0), ":t")
+    if name == "" then
+      return window_zoom_badge()
+    end
+
+    label = " " .. name
   end
 
-  local name = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(0), ":t")
-  if name == "" then
-    return ""
-  end
-
-  return statusline_escape(" " .. name)
+  label = statusline_escape(label)
+  return label .. window_zoom_badge()
 end
 
 vim.o.winbar = "%{%v:lua.dotfiles_winbar()%}"
@@ -2947,6 +3030,7 @@ toggle_window_zoom_impl = function()
   end
   vim.cmd("tab split")
   vim.t.dotfiles_zoomed = true
+  apply_window_zoom_winbar(vim.api.nvim_get_current_win())
   schedule_terminal_drawer_repair()
 end
 
